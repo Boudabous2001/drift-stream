@@ -14,7 +14,14 @@
 
 import { WebSocketServer } from 'ws';
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
 const PORT = Number(process.env.PORT) || 8080;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const staticDir = path.resolve(__dirname, '../client/dist');
 
 /**
  * @typedef {Object} Room
@@ -103,7 +110,72 @@ function sanitizeClientId(value) {
   return `client_${Math.random().toString(36).slice(2, 12)}_${Date.now().toString(36)}`;
 }
 
-const wss = new WebSocketServer({ port: PORT });
+async function handleHttpRequest(req, res) {
+  if (req.url === '/healthz') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (req.url?.startsWith('/ws')) {
+    res.writeHead(426, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('WebSocket endpoint');
+    return;
+  }
+
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const pathname = decodeURIComponent(url.pathname);
+  const safePath = pathname === '/' ? '/index.html' : pathname;
+  const filePath = path.resolve(staticDir, `.${safePath}`);
+
+  if (!filePath.startsWith(staticDir)) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
+
+  try {
+    const info = await stat(filePath);
+    if (info.isFile()) {
+      const body = await readFile(filePath);
+      res.writeHead(200, {
+        'content-type': contentType(filePath),
+        'cache-control': filePath.includes(`${path.sep}assets${path.sep}`)
+          ? 'public, max-age=31536000, immutable'
+          : 'no-cache',
+      });
+      res.end(body);
+      return;
+    }
+  } catch {
+    // SPA fallback below.
+  }
+
+  try {
+    const body = await readFile(path.join(staticDir, 'index.html'));
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+    res.end(body);
+  } catch {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('Build client first: npm run build');
+  }
+}
+
+function contentType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const types = {
+    '.css': 'text/css; charset=utf-8',
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.woff2': 'font/woff2',
+  };
+  return types[ext] || 'application/octet-stream';
+}
+
+const server = createServer(handleHttpRequest);
+const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('error', (err) => {
   if (err?.code === 'EADDRINUSE') {
@@ -132,6 +204,11 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => handleLeave(ws));
   ws.on('error', () => handleLeave(ws));
+});
+
+server.listen(PORT, () => {
+  // eslint-disable-next-line no-console
+  console.log(`Phontom Frame server listening on http://localhost:${PORT}`);
 });
 
 function handleMessage(ws, msg) {
@@ -406,6 +483,3 @@ function handleLeave(ws) {
     }, 5 * 60 * 1000);
   }
 }
-
-// eslint-disable-next-line no-console
-console.log(`Phontom Frame collab server listening on ws://localhost:${PORT}`);

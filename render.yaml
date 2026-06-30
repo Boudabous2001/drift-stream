@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: phontom-frame
+    env: node
+    plan: free
+    buildCommand: npm run install:all && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 20
