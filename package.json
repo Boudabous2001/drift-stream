@@ -1,0 +1,19 @@
+{
+  "name": "drift-stream",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lecteur de Revue Augmenté — collaborative video review player with canvas annotations and timestamped comments (Hackathon ESTIAM x 42C 2026, Pôle 1 / Sujet A).",
+  "type": "module",
+  "scripts": {
+    "install:all": "npm install && npm --prefix client install && npm --prefix server install",
+    "dev": "concurrently -n \"server,client\" -c \"magenta,cyan\" \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "license": "MIT"
+}
