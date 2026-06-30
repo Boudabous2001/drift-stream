@@ -555,11 +555,41 @@ button {
   background: #000;
 }
 
+.annotation-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
 .annotation-canvas {
   position: absolute;
   top: 0;
   left: 0;
   touch-action: none;
+}
+
+.text-editor {
+  position: absolute;
+  z-index: 5;
+  min-width: 80px;
+  margin: 0;
+  padding: 4px 8px;
+  background: rgba(10, 12, 20, 0.82);
+  border: 1.5px solid #38bdf8;
+  border-radius: 7px;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  line-height: 1.25;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  field-sizing: content;
+}
+
+.text-editor::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 500;
 }
 
 .frame-badge {

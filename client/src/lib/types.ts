@@ -1,7 +1,7 @@
 /** Shared domain types for Drift Stream. */
 
 export type ShapeTool = 'arrow' | 'rect' | 'ellipse' | 'freehand' | 'text';
-export type Tool = ShapeTool | 'select';
+export type Tool = ShapeTool | 'select' | 'eraser';
 
 /** A point expressed in normalized coordinates (0..1) relative to the video frame. */
 export interface NPoint {

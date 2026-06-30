@@ -6,6 +6,7 @@ import {
   Circle,
   Pencil,
   Type,
+  Eraser,
   Trash2,
   Minus,
   type LucideIcon,
@@ -30,12 +31,13 @@ interface ToolDef {
 }
 
 const TOOLS: ToolDef[] = [
-  { id: 'select', label: 'Sélection', hint: 'V', icon: MousePointer2 },
+  { id: 'select', label: 'Sélection / déplacer', hint: 'V', icon: MousePointer2 },
   { id: 'arrow', label: 'Flèche', hint: 'A', icon: ArrowUpRight },
   { id: 'rect', label: 'Rectangle', hint: 'R', icon: Square },
   { id: 'ellipse', label: 'Ellipse', hint: 'E', icon: Circle },
   { id: 'freehand', label: 'Dessin libre', hint: 'P', icon: Pencil },
   { id: 'text', label: 'Texte', hint: 'T', icon: Type },
+  { id: 'eraser', label: 'Gomme', hint: 'G', icon: Eraser },
 ];
 
 const PALETTE = ['#ff5c7c', '#38bdf8', '#34d399', '#fbbf24', '#a78bfa', '#ffffff'];

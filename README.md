@@ -16,18 +16,20 @@ s'exporte en **JSON** (le livrable autonome demandé).
 | Exigence du brief | Implémentation |
 |---|---|
 | **Interface React** | Client Vite + React 18 + TypeScript |
-| **Annotations dessinées (flèches, formes)** | Overlay **Canvas API** : flèche, rectangle, ellipse, dessin libre, texte |
+| **Annotations dessinées (flèches, formes)** | Overlay **Canvas API** : flèche, rectangle, ellipse, dessin libre, texte — **éditables** (sélection, déplacement, redimensionnement par poignées), **gomme** et **éditeur de texte inline** (sans `prompt` navigateur) |
 | **Commentaires horodatés en temps réel** | Panneau de commentaires liés au temps vidéo, diffusés via **WebSockets** |
 | **Stack : React · WebSockets · Canvas API** | Exactement cette stack — aucune dépendance UI lourde |
 | **Livrable : composant autonome exportant les annotations en JSON** | `<ReviewPlayer />` autonome + bouton **« Exporter JSON »** ([format](#-format-du-livrable-json)) |
 
 ### Au-delà du minimum
+- ✏️ **Annotations entièrement éditables** : avec l'outil **Sélection**, on clique une forme pour la **déplacer** ou la **redimensionner** (poignées de coins / d'extrémités) ; la **gomme** (ou la touche `Suppr`) la supprime. Toutes les modifications sont diffusées en temps réel.
+- 🅣 **Éditeur de texte inline (façon Canva)** : la saisie de texte ouvre une **zone d'écriture directement sur le canvas** (plus de boîte de dialogue `prompt`), et le texte reste éditable (double-clic) et supprimable comme toute autre forme.
 - 👑 **Rôle propriétaire & média de salle (CRUD)** : le **premier arrivé** devient propriétaire et gère le média partagé (charger une vidéo par URL ou échantillon, le remplacer, le retirer). Les **invités** sont en lecture seule — ils annotent et commentent mais ne peuvent ni ajouter ni supprimer le média. La règle est **appliquée côté serveur** (pas seulement masquée dans l'UI). Si le propriétaire quitte, la propriété est transmise au plus ancien participant restant.
 - 📝 **Mode tableau blanc** : à la place d'une vidéo, le propriétaire peut démarrer une **feuille blanche** (claire ou sombre) pour dessiner et collaborer librement, sans timeline.
 - 👥 **Présence en direct** (avatars, statut de connexion) et **curseurs collaboratifs**.
 - 🔁 **Sync d'état à la connexion** : un participant qui rejoint reçoit tout l'état (média, annotations, commentaires, propriétaire).
 - 🧭 **Timeline augmentée** : marqueurs d'annotations et de commentaires cliquables.
-- ⌨️ **Raccourcis clavier** (espace = lecture/pause, `a` flèche, `r` rect, `e` ellipse, `p` crayon, `t` texte, `v` sélection, `f` plein écran, `m` muet).
+- ⌨️ **Raccourcis clavier** (espace = lecture/pause, `v` sélection, `a` flèche, `r` rect, `e` ellipse, `p` crayon, `t` texte, `g` gomme, `Suppr` supprimer la sélection, `f` plein écran, `m` muet).
 - 🌐 **Robustesse** : reconnexion automatique, **mode local** si le serveur est injoignable, et plus de doublon de session (correctif React StrictMode).
 
 ---

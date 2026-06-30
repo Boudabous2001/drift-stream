@@ -239,6 +239,9 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
         case 't':
           setTool('text');
           break;
+        case 'g':
+          setTool('eraser');
+          break;
         default:
           break;
       }
@@ -334,13 +337,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
           ref={stageRef}
         >
           {isVideo && (
-            <video
-              ref={videoRef}
-              className="video"
-              src={media!.src}
-              playsInline
-              onClick={() => tool === 'select' && togglePlay()}
-            />
+            <video ref={videoRef} className="video" src={media!.src} playsInline />
           )}
 
           {canAnnotate ? (
@@ -355,8 +352,9 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
               cursors={cursorList}
               alwaysVisible={isWhiteboard}
               onCreate={handleCreate}
+              onUpdate={onCreateAnnotation}
+              onDelete={onDeleteAnnotation}
               onCursorMove={onCursorMove}
-              promptText={() => window.prompt('Texte de l’annotation :')}
             />
           ) : (
             <MediaPlaceholder isOwner={isOwner} />
