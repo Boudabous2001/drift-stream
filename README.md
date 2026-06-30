@@ -22,6 +22,8 @@ s'exporte en **JSON** (le livrable autonome demandé).
 | **Livrable : composant autonome exportant les annotations en JSON** | `<ReviewPlayer />` autonome + bouton **« Exporter JSON »** ([format](#-format-du-livrable-json)) |
 
 ### Au-delà du minimum
+- 🏠 **Salles personnelles & rôles collaboratifs** : on **crée sa propre salle** (et on en devient propriétaire) ou on **rejoint** celle d'un ami via un lien. Un panneau **Participants** liste les présents avec leur rôle ; un propriétaire peut **promouvoir** un invité au rang de propriétaire (mêmes droits) ou le **rétrograder**, et un invité peut **demander le rôle propriétaire** — la demande arrive aux propriétaires qui **acceptent / refusent**. Plusieurs propriétaires possibles ; la dernière couronne ne peut pas être retirée. Tout est **vérifié côté serveur**.
+- 🌗 **Thème clair / sombre** : bascule instantanée, mémorisée, appliquée à toute l'interface (variables CSS) sans toucher au reste.
 - ✏️ **Annotations entièrement éditables** : avec l'outil **Sélection**, on clique une forme pour la **déplacer** ou la **redimensionner** (poignées de coins / d'extrémités) ; la **gomme** (ou la touche `Suppr`) la supprime. Toutes les modifications sont diffusées en temps réel.
 - 🅣 **Éditeur de texte inline (façon Canva)** : la saisie de texte ouvre une **zone d'écriture directement sur le canvas** (plus de boîte de dialogue `prompt`), et le texte reste éditable (double-clic) et supprimable comme toute autre forme.
 - 👑 **Rôle propriétaire & média de salle (CRUD)** : le **premier arrivé** devient propriétaire et gère le média partagé (charger une vidéo par URL ou échantillon, le remplacer, le retirer). Les **invités** sont en lecture seule — ils annotent et commentent mais ne peuvent ni ajouter ni supprimer le média. La règle est **appliquée côté serveur** (pas seulement masquée dans l'UI). Si le propriétaire quitte, la propriété est transmise au plus ancien participant restant.
@@ -73,7 +75,8 @@ Drift Stream/
 │       │   ├── ReviewPlayer.tsx     # ⭐ composant autonome (livrable) : média + canvas + timeline + export
 │       │   ├── AnnotationCanvas.tsx # overlay Canvas API : dessin + rendu des annotations & curseurs
 │       │   ├── MediaControls.tsx    # CRUD du média (propriétaire) : vidéo / tableau blanc / retrait
-│       │   ├── Toolbar.tsx          # outils (flèche, formes, crayon, texte, couleur, épaisseur)
+│       │   ├── ParticipantsPanel.tsx# participants, rôles, promotion/rétrogradation, demandes
+│       │   ├── Toolbar.tsx          # outils (sélection, flèche, formes, crayon, texte, gomme)
 │       │   ├── CommentsPanel.tsx    # commentaires horodatés
 │       │   └── PresenceBar.tsx      # présence + statut de connexion
 │       ├── lib/
@@ -101,13 +104,14 @@ Drift Stream/
 
 | Client → Serveur | Serveur → Clients |
 |---|---|
-| `join` `{ roomId, name }` | `welcome` (état complet + `ownerId` + `media`), `presence` (avec `ownerId`), `peer:joined` / `peer:left` |
-| `media:set` / `media:remove` *(propriétaire uniquement)* | `media:update` `{ media }` |
+| `join` `{ roomId, name }` | `welcome` (état complet + `owners[]` + `media`), `presence` (avec `owners[]` et `isOwner` par participant), `peer:joined` / `peer:left` |
+| `media:set` / `media:remove` *(propriétaires uniquement)* | `media:update` `{ media }` |
+| `role:grant` / `role:revoke` `{ peerId }` *(propriétaires)* · `role:request` *(invité)* | `role:granted` / `role:revoked` (au concerné) · `role:request` (aux propriétaires) · `presence` (rôles à jour) |
 | `annotation:add` / `:update` / `:delete` / `:clear` | `annotation:upsert` / `annotation:delete` / `annotation:clear` |
 | `comment:add` / `comment:delete` | `comment:add` / `comment:delete` |
 | `cursor` `{ x, y }` | `cursor` (rediffusé aux autres) |
 
-> Le serveur vérifie `ownerId === clientId` avant tout `media:set` / `media:remove` : un invité qui tente de modifier le média est **ignoré**.
+> Le serveur vérifie `room.owners.has(clientId)` avant tout `media:set` / `media:remove` / `role:grant` / `role:revoke` : un invité qui tente une action réservée est **ignoré**.
 
 ---
 

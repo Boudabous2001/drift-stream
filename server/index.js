@@ -39,7 +39,7 @@ function getRoom(roomId) {
       annotations: new Map(),
       comments: [],
       peers: new Map(),
-      ownerId: null, // first joiner becomes owner; promoted on owner leave
+      owners: new Set(), // peer ids with owner rights (creator first; multi-owner)
       media: null, // { kind: 'video'|'whiteboard', src?, title?, background? }
     };
     rooms.set(roomId, room);
@@ -85,7 +85,12 @@ function roster(room) {
     id: p.id,
     name: p.name,
     color: p.color,
+    isOwner: room.owners.has(p.id),
   }));
+}
+
+function ownersList(room) {
+  return [...room.owners];
 }
 
 const wss = new WebSocketServer({ port: PORT });
@@ -123,6 +128,12 @@ function handleMessage(ws, msg) {
       return handleMediaSet(ws, msg);
     case 'media:remove':
       return handleMediaRemove(ws);
+    case 'role:grant':
+      return handleRoleGrant(ws, msg);
+    case 'role:revoke':
+      return handleRoleRevoke(ws, msg);
+    case 'role:request':
+      return handleRoleRequest(ws);
     case 'comment:add':
       return handleCommentAdd(ws, msg);
     case 'comment:delete':
@@ -149,15 +160,15 @@ function handleJoin(ws, msg) {
   ws.meta.roomId = roomId;
   room.peers.set(ws, peer);
 
-  // The first participant in a fresh room becomes its owner.
-  if (!room.ownerId) room.ownerId = peer.id;
+  // The first participant in a fresh room becomes its owner (room creator).
+  if (room.owners.size === 0) room.owners.add(peer.id);
 
   // 1) Acknowledge the joiner with its identity + full room state.
   send(ws, {
     type: 'welcome',
     self: peer,
     roomId,
-    ownerId: room.ownerId,
+    owners: ownersList(room),
     media: room.media,
     annotations: [...room.annotations.values()],
     comments: room.comments,
@@ -165,12 +176,59 @@ function handleJoin(ws, msg) {
   });
 
   // 2) Tell everyone else about the new peer + updated roster.
-  broadcast(room, { type: 'presence', peers: roster(room), ownerId: room.ownerId }, ws);
+  broadcast(room, { type: 'presence', peers: roster(room), owners: ownersList(room) }, ws);
   broadcast(room, { type: 'peer:joined', peer }, ws);
 }
 
 function isOwner(ws, room) {
-  return room && room.ownerId === ws.meta?.id;
+  return Boolean(room && ws.meta?.id && room.owners.has(ws.meta.id));
+}
+
+function syncRoles(room) {
+  broadcast(room, { type: 'presence', peers: roster(room), owners: ownersList(room) });
+}
+
+function handleRoleGrant(ws, msg) {
+  const room = currentRoom(ws);
+  if (!room || !isOwner(ws, room) || !msg.peerId) return; // owners only
+  if (![...room.peers.values()].some((p) => p.id === msg.peerId)) return;
+  if (room.owners.has(msg.peerId)) return;
+  room.owners.add(msg.peerId);
+  // Notify the promoted peer specifically.
+  for (const [peerWs, p] of room.peers) {
+    if (p.id === msg.peerId) {
+      send(peerWs, { type: 'role:granted', by: room.peers.get(ws)?.name });
+    }
+  }
+  syncRoles(room);
+}
+
+function handleRoleRevoke(ws, msg) {
+  const room = currentRoom(ws);
+  if (!room || !isOwner(ws, room) || !msg.peerId) return; // owners only
+  // Never drop the last owner — a room must always have at least one.
+  if (room.owners.size <= 1 && room.owners.has(msg.peerId)) return;
+  if (!room.owners.has(msg.peerId)) return;
+  room.owners.delete(msg.peerId);
+  for (const [peerWs, p] of room.peers) {
+    if (p.id === msg.peerId) {
+      send(peerWs, { type: 'role:revoked' });
+    }
+  }
+  syncRoles(room);
+}
+
+function handleRoleRequest(ws) {
+  const room = currentRoom(ws);
+  if (!room) return;
+  const peer = room.peers.get(ws);
+  if (!peer || room.owners.has(peer.id)) return; // already owner
+  // Forward the request to every current owner.
+  for (const [peerWs, p] of room.peers) {
+    if (room.owners.has(p.id)) {
+      send(peerWs, { type: 'role:request', peer: { id: peer.id, name: peer.name, color: peer.color } });
+    }
+  }
 }
 
 function handleMediaSet(ws, msg) {
@@ -295,14 +353,14 @@ function handleLeave(ws) {
   const peer = room.peers.get(ws);
   room.peers.delete(ws);
 
-  // If the owner left, promote the next (oldest) remaining participant.
-  if (peer && room.ownerId === peer.id) {
-    const next = room.peers.values().next().value;
-    room.ownerId = next ? next.id : null;
-  }
-
   if (peer) {
-    broadcast(room, { type: 'presence', peers: roster(room), ownerId: room.ownerId });
+    room.owners.delete(peer.id);
+    // A room must always keep at least one owner: promote the oldest peer left.
+    if (room.owners.size === 0 && room.peers.size > 0) {
+      const next = room.peers.values().next().value;
+      room.owners.add(next.id);
+    }
+    broadcast(room, { type: 'presence', peers: roster(room), owners: ownersList(room) });
     broadcast(room, { type: 'peer:left', peerId: peer.id });
   }
   // Garbage-collect empty rooms after a short grace period so refreshes

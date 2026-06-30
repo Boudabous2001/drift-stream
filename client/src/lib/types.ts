@@ -51,6 +51,7 @@ export interface Peer {
   id: string;
   name: string;
   color: string;
+  isOwner?: boolean;
 }
 
 export type MediaKind = 'video' | 'whiteboard';

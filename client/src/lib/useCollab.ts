@@ -5,7 +5,9 @@ export interface CollabState {
   status: 'connecting' | 'online' | 'offline';
   self: Peer | null;
   peers: Peer[];
-  ownerId: string | null;
+  owners: string[];
+  /** Pending owner-role requests from guests (visible to owners). */
+  roleRequests: Peer[];
   media: Media | null;
   annotations: Annotation[];
   comments: Comment[];
@@ -22,6 +24,17 @@ export interface CollabApi extends CollabState {
   sendCursor: (x: number, y: number) => void;
   setMedia: (media: Media) => void;
   removeMedia: () => void;
+  grantRole: (peerId: string) => void;
+  revokeRole: (peerId: string) => void;
+  requestRole: () => void;
+  dismissRequest: (peerId: string) => void;
+}
+
+/** Callbacks for transient role events (toasts handled by the UI). */
+export interface CollabEvents {
+  onRoleRequest?: (peer: Peer) => void;
+  onRoleGranted?: (by?: string) => void;
+  onRoleRevoked?: () => void;
 }
 
 /** Resolve the collab server URL (dev proxy by default, overridable via env). */
@@ -41,12 +54,17 @@ function resolveUrl(): string {
  * If the server is unreachable the player still works fully offline (status
  * "offline"); state simply isn't shared.
  */
-export function useCollab(roomId: string, name: string): CollabApi {
+export function useCollab(
+  roomId: string,
+  name: string,
+  events?: CollabEvents,
+): CollabApi {
   const [state, setState] = useState<CollabState>({
     status: 'connecting',
     self: null,
     peers: [],
-    ownerId: null,
+    owners: [],
+    roleRequests: [],
     media: null,
     annotations: [],
     comments: [],
@@ -55,6 +73,10 @@ export function useCollab(roomId: string, name: string): CollabApi {
 
   const wsRef = useRef<WebSocket | null>(null);
   const cursorThrottle = useRef(0);
+
+  // Keep latest event callbacks without re-running the socket effect.
+  const eventsRef = useRef<CollabEvents | undefined>(events);
+  eventsRef.current = events;
 
   const sendRaw = useCallback((payload: unknown) => {
     const ws = wsRef.current;
@@ -105,7 +127,7 @@ export function useCollab(roomId: string, name: string): CollabApi {
         } catch {
           return;
         }
-        applyServerMessage(msg, setState);
+        applyServerMessage(msg, setState, eventsRef);
       };
     }
 
@@ -190,9 +212,38 @@ export function useCollab(roomId: string, name: string): CollabApi {
     sendRaw({ type: 'media:remove' });
   }, [sendRaw]);
 
+  const grantRole = useCallback(
+    (peerId: string) => {
+      sendRaw({ type: 'role:grant', peerId });
+      // Drop any pending request for this peer once granted.
+      setState((s) => ({
+        ...s,
+        roleRequests: s.roleRequests.filter((r) => r.id !== peerId),
+      }));
+    },
+    [sendRaw],
+  );
+
+  const revokeRole = useCallback(
+    (peerId: string) => sendRaw({ type: 'role:revoke', peerId }),
+    [sendRaw],
+  );
+
+  const requestRole = useCallback(
+    () => sendRaw({ type: 'role:request' }),
+    [sendRaw],
+  );
+
+  const dismissRequest = useCallback((peerId: string) => {
+    setState((s) => ({
+      ...s,
+      roleRequests: s.roleRequests.filter((r) => r.id !== peerId),
+    }));
+  }, []);
+
   return {
     ...state,
-    isOwner: Boolean(state.self && state.ownerId && state.self.id === state.ownerId),
+    isOwner: Boolean(state.self && state.owners.includes(state.self.id)),
     upsertAnnotation,
     deleteAnnotation,
     clearAnnotations,
@@ -201,6 +252,10 @@ export function useCollab(roomId: string, name: string): CollabApi {
     sendCursor,
     setMedia,
     removeMedia,
+    grantRole,
+    revokeRole,
+    requestRole,
+    dismissRequest,
   };
 }
 
@@ -221,6 +276,7 @@ function sortByTime<T extends { time: number }>(list: T[]): T[] {
 function applyServerMessage(
   msg: any,
   setState: React.Dispatch<React.SetStateAction<CollabState>>,
+  eventsRef: React.MutableRefObject<CollabEvents | undefined>,
 ) {
   switch (msg.type) {
     case 'welcome':
@@ -228,7 +284,7 @@ function applyServerMessage(
         ...s,
         self: msg.self,
         peers: msg.peers ?? [],
-        ownerId: msg.ownerId ?? null,
+        owners: msg.owners ?? [],
         media: msg.media ?? null,
         annotations: msg.annotations ?? [],
         comments: sortByTime(msg.comments ?? []),
@@ -238,8 +294,21 @@ function applyServerMessage(
       setState((s) => ({
         ...s,
         peers: msg.peers ?? [],
-        ownerId: msg.ownerId !== undefined ? msg.ownerId : s.ownerId,
+        owners: msg.owners !== undefined ? msg.owners : s.owners,
       }));
+      break;
+    case 'role:request':
+      setState((s) => {
+        if (!msg.peer || s.roleRequests.some((r) => r.id === msg.peer.id)) return s;
+        return { ...s, roleRequests: [...s.roleRequests, msg.peer] };
+      });
+      eventsRef.current?.onRoleRequest?.(msg.peer);
+      break;
+    case 'role:granted':
+      eventsRef.current?.onRoleGranted?.(msg.by);
+      break;
+    case 'role:revoked':
+      eventsRef.current?.onRoleRevoked?.();
       break;
     case 'media:update':
       setState((s) => ({ ...s, media: msg.media ?? null }));
