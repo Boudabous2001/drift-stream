@@ -35,10 +35,33 @@ const COLORS = [
 function getRoom(roomId) {
   let room = rooms.get(roomId);
   if (!room) {
-    room = { annotations: new Map(), comments: [], peers: new Map() };
+    room = {
+      annotations: new Map(),
+      comments: [],
+      peers: new Map(),
+      ownerId: null, // first joiner becomes owner; promoted on owner leave
+      media: null, // { kind: 'video'|'whiteboard', src?, title?, background? }
+    };
     rooms.set(roomId, room);
   }
   return room;
+}
+
+/** Sanitize a media descriptor sent by a client (owner). */
+function sanitizeMedia(media) {
+  if (!media || typeof media !== 'object') return null;
+  if (media.kind === 'whiteboard') {
+    const bg = ['white', 'dark'].includes(media.background)
+      ? media.background
+      : 'white';
+    return { kind: 'whiteboard', background: bg };
+  }
+  if (media.kind === 'video') {
+    const src = String(media.src || '').slice(0, 2000);
+    if (!src) return null;
+    return { kind: 'video', src, title: String(media.title || '').slice(0, 120) };
+  }
+  return null;
 }
 
 function send(ws, payload) {
@@ -96,6 +119,10 @@ function handleMessage(ws, msg) {
       return handleAnnotationDelete(ws, msg);
     case 'annotation:clear':
       return handleAnnotationClear(ws);
+    case 'media:set':
+      return handleMediaSet(ws, msg);
+    case 'media:remove':
+      return handleMediaRemove(ws);
     case 'comment:add':
       return handleCommentAdd(ws, msg);
     case 'comment:delete':
@@ -122,19 +149,51 @@ function handleJoin(ws, msg) {
   ws.meta.roomId = roomId;
   room.peers.set(ws, peer);
 
+  // The first participant in a fresh room becomes its owner.
+  if (!room.ownerId) room.ownerId = peer.id;
+
   // 1) Acknowledge the joiner with its identity + full room state.
   send(ws, {
     type: 'welcome',
     self: peer,
     roomId,
+    ownerId: room.ownerId,
+    media: room.media,
     annotations: [...room.annotations.values()],
     comments: room.comments,
     peers: roster(room),
   });
 
   // 2) Tell everyone else about the new peer + updated roster.
-  broadcast(room, { type: 'presence', peers: roster(room) }, ws);
+  broadcast(room, { type: 'presence', peers: roster(room), ownerId: room.ownerId }, ws);
   broadcast(room, { type: 'peer:joined', peer }, ws);
+}
+
+function isOwner(ws, room) {
+  return room && room.ownerId === ws.meta?.id;
+}
+
+function handleMediaSet(ws, msg) {
+  const room = currentRoom(ws);
+  if (!room || !isOwner(ws, room)) return; // owner-only
+  const media = sanitizeMedia(msg.media);
+  if (!media) return;
+  room.media = media;
+  // Switching the source invalidates the previous annotations/comments.
+  room.annotations.clear();
+  room.comments = [];
+  broadcast(room, { type: 'media:update', media: room.media });
+  broadcast(room, { type: 'annotation:clear' });
+}
+
+function handleMediaRemove(ws) {
+  const room = currentRoom(ws);
+  if (!room || !isOwner(ws, room)) return; // owner-only
+  room.media = null;
+  room.annotations.clear();
+  room.comments = [];
+  broadcast(room, { type: 'media:update', media: null });
+  broadcast(room, { type: 'annotation:clear' });
 }
 
 function currentRoom(ws) {
@@ -235,8 +294,15 @@ function handleLeave(ws) {
   if (!room) return;
   const peer = room.peers.get(ws);
   room.peers.delete(ws);
+
+  // If the owner left, promote the next (oldest) remaining participant.
+  if (peer && room.ownerId === peer.id) {
+    const next = room.peers.values().next().value;
+    room.ownerId = next ? next.id : null;
+  }
+
   if (peer) {
-    broadcast(room, { type: 'presence', peers: roster(room) });
+    broadcast(room, { type: 'presence', peers: roster(room), ownerId: room.ownerId });
     broadcast(room, { type: 'peer:left', peerId: peer.id });
   }
   // Garbage-collect empty rooms after a short grace period so refreshes

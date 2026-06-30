@@ -1,4 +1,4 @@
-import type { Annotation, ExportBundle, Comment, NPoint } from './types';
+import type { Annotation, ExportBundle, Comment, Media, NPoint } from './types';
 
 /** Window (seconds) around an annotation's time during which it is rendered. */
 export const ANNOTATION_WINDOW = 3;
@@ -60,7 +60,7 @@ export function clamp01(v: number): number {
  */
 export function buildExport(args: {
   room: string;
-  src: string;
+  media: Media | null;
   duration: number;
   annotations: Annotation[];
   comments: Comment[];
@@ -70,7 +70,9 @@ export function buildExport(args: {
     version: 1,
     exportedAt: new Date().toISOString(),
     room: args.room,
-    media: { src: args.src, duration: args.duration },
+    media: args.media
+      ? { ...args.media, duration: args.media.kind === 'video' ? args.duration : undefined }
+      : null,
     annotations: [...args.annotations].sort((a, b) => a.time - b.time),
     comments: [...args.comments].sort((a, b) => a.time - b.time),
   };

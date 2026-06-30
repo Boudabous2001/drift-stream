@@ -53,6 +53,18 @@ export interface Peer {
   color: string;
 }
 
+export type MediaKind = 'video' | 'whiteboard';
+
+/** The room's shared media surface (owner-managed). */
+export interface Media {
+  kind: MediaKind;
+  /** Video source URL (when kind === 'video'). */
+  src?: string;
+  title?: string;
+  /** Whiteboard background (when kind === 'whiteboard'): 'white' | 'dark'. */
+  background?: 'white' | 'dark';
+}
+
 /** Live (ephemeral) cursor position broadcast by a peer. */
 export interface RemoteCursor {
   peerId: string;
@@ -69,7 +81,7 @@ export interface ExportBundle {
   version: 1;
   exportedAt: string;
   room: string;
-  media: { src: string; duration: number };
+  media: (Media & { duration?: number }) | null;
   annotations: Annotation[];
   comments: Comment[];
 }

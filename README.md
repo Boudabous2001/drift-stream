@@ -22,11 +22,13 @@ s'exporte en **JSON** (le livrable autonome demandé).
 | **Livrable : composant autonome exportant les annotations en JSON** | `<ReviewPlayer />` autonome + bouton **« Exporter JSON »** ([format](#-format-du-livrable-json)) |
 
 ### Au-delà du minimum
-- 👥 **Présence en direct** (avatars, statut de connexion) et **curseurs collaboratifs** sur la vidéo.
-- 🔁 **Sync d'état à la connexion** : un participant qui rejoint reçoit toute la revue déjà en cours.
-- 🧭 **Timeline augmentée** : marqueurs d'annotations et de commentaires cliquables sur la barre de progression.
-- ⌨️ **Raccourcis clavier** (espace = lecture/pause, `a` flèche, `r` rect, `e` ellipse, `p` crayon, `t` texte, `v` sélection).
-- 🌐 **Robustesse** : si le serveur est injoignable, le lecteur fonctionne en **mode local** (reconnexion automatique).
+- 👑 **Rôle propriétaire & média de salle (CRUD)** : le **premier arrivé** devient propriétaire et gère le média partagé (charger une vidéo par URL ou échantillon, le remplacer, le retirer). Les **invités** sont en lecture seule — ils annotent et commentent mais ne peuvent ni ajouter ni supprimer le média. La règle est **appliquée côté serveur** (pas seulement masquée dans l'UI). Si le propriétaire quitte, la propriété est transmise au plus ancien participant restant.
+- 📝 **Mode tableau blanc** : à la place d'une vidéo, le propriétaire peut démarrer une **feuille blanche** (claire ou sombre) pour dessiner et collaborer librement, sans timeline.
+- 👥 **Présence en direct** (avatars, statut de connexion) et **curseurs collaboratifs**.
+- 🔁 **Sync d'état à la connexion** : un participant qui rejoint reçoit tout l'état (média, annotations, commentaires, propriétaire).
+- 🧭 **Timeline augmentée** : marqueurs d'annotations et de commentaires cliquables.
+- ⌨️ **Raccourcis clavier** (espace = lecture/pause, `a` flèche, `r` rect, `e` ellipse, `p` crayon, `t` texte, `v` sélection, `f` plein écran, `m` muet).
+- 🌐 **Robustesse** : reconnexion automatique, **mode local** si le serveur est injoignable, et plus de doublon de session (correctif React StrictMode).
 
 ---
 
@@ -66,8 +68,9 @@ Drift Stream/
 ├── client/                      # React + Vite + TypeScript
 │   └── src/
 │       ├── components/
-│       │   ├── ReviewPlayer.tsx     # ⭐ composant autonome (livrable) : vidéo + canvas + timeline + export
+│       │   ├── ReviewPlayer.tsx     # ⭐ composant autonome (livrable) : média + canvas + timeline + export
 │       │   ├── AnnotationCanvas.tsx # overlay Canvas API : dessin + rendu des annotations & curseurs
+│       │   ├── MediaControls.tsx    # CRUD du média (propriétaire) : vidéo / tableau blanc / retrait
 │       │   ├── Toolbar.tsx          # outils (flèche, formes, crayon, texte, couleur, épaisseur)
 │       │   ├── CommentsPanel.tsx    # commentaires horodatés
 │       │   └── PresenceBar.tsx      # présence + statut de connexion
@@ -96,10 +99,13 @@ Drift Stream/
 
 | Client → Serveur | Serveur → Clients |
 |---|---|
-| `join` `{ roomId, name }` | `welcome` (état complet), `presence`, `peer:joined` / `peer:left` |
+| `join` `{ roomId, name }` | `welcome` (état complet + `ownerId` + `media`), `presence` (avec `ownerId`), `peer:joined` / `peer:left` |
+| `media:set` / `media:remove` *(propriétaire uniquement)* | `media:update` `{ media }` |
 | `annotation:add` / `:update` / `:delete` / `:clear` | `annotation:upsert` / `annotation:delete` / `annotation:clear` |
 | `comment:add` / `comment:delete` | `comment:add` / `comment:delete` |
 | `cursor` `{ x, y }` | `cursor` (rediffusé aux autres) |
+
+> Le serveur vérifie `ownerId === clientId` avant tout `media:set` / `media:remove` : un invité qui tente de modifier le média est **ignoré**.
 
 ---
 
@@ -114,7 +120,7 @@ revue (voir [`docs/sample-export.json`](docs/sample-export.json)) :
   "version": 1,
   "exportedAt": "2026-06-30T10:00:00.000Z",
   "room": "revue-demo",
-  "media": { "src": "…/BigBuckBunny.mp4", "duration": 596.5 },
+  "media": { "kind": "video", "src": "…/BigBuckBunny.mp4", "title": "Big Buck Bunny", "duration": 596.5 },
   "annotations": [
     {
       "id": "a_…", "tool": "arrow", "time": 12.5,
@@ -142,8 +148,11 @@ en local avec de simples tableaux.
 
 ```tsx
 <ReviewPlayer
-  src="/ma-video.mp4"
   room="revue-demo"
+  media={{ kind: 'video', src: '/ma-video.mp4' }} // ou { kind: 'whiteboard', background: 'white' } | null
+  isOwner={true}
+  onSetMedia={…}
+  onRemoveMedia={…}
   annotations={annotations}
   comments={comments}
   peers={peers}

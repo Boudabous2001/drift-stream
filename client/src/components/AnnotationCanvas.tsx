@@ -13,6 +13,8 @@ interface Props {
   annotations: Annotation[];
   /** All cursors from remote peers. */
   cursors: RemoteCursor[];
+  /** When true, every annotation is fully opaque (whiteboard mode, no timeline). */
+  alwaysVisible?: boolean;
   onCreate: (a: Annotation) => void;
   onCursorMove: (x: number, y: number) => void;
   /** Notify parent that a text annotation needs a label (returns text or null). */
@@ -34,6 +36,7 @@ export function AnnotationCanvas({
   currentTime,
   annotations,
   cursors,
+  alwaysVisible = false,
   onCreate,
   onCursorMove,
   promptText,
@@ -46,7 +49,7 @@ export function AnnotationCanvas({
   useEffect(() => {
     draw();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width, height, annotations, cursors, currentTime, color, strokeWidth]);
+  }, [width, height, annotations, cursors, currentTime, color, strokeWidth, alwaysVisible]);
 
   function draw() {
     const canvas = canvasRef.current;
@@ -64,7 +67,7 @@ export function AnnotationCanvas({
     ctx.clearRect(0, 0, width, height);
 
     for (const a of annotations) {
-      const alpha = visibilityAlpha(a, currentTime);
+      const alpha = alwaysVisible ? 1 : visibilityAlpha(a, currentTime);
       if (alpha <= 0) continue;
       drawAnnotation(ctx, a, width, height, alpha);
     }

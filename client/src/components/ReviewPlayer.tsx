@@ -13,10 +13,13 @@ import {
   Download,
   PenLine,
   X,
+  Film,
+  PenSquare,
 } from 'lucide-react';
 import type {
   Annotation,
   Comment,
+  Media,
   Peer,
   RemoteCursor,
   Tool,
@@ -33,10 +36,14 @@ import { AnnotationCanvas } from './AnnotationCanvas';
 import { Toolbar } from './Toolbar';
 import { CommentsPanel } from './CommentsPanel';
 import { PresenceBar } from './PresenceBar';
+import { MediaControls } from './MediaControls';
 
 export interface ReviewPlayerProps {
-  src: string;
   room: string;
+  media: Media | null;
+  isOwner: boolean;
+  onSetMedia: (m: Media) => void;
+  onRemoveMedia: () => void;
   annotations: Annotation[];
   comments: Comment[];
   peers: Peer[];
@@ -54,14 +61,18 @@ export interface ReviewPlayerProps {
 /**
  * Drift Stream — Lecteur de Revue Augmenté.
  *
- * Self-contained review surface: an HTML5 video with a Canvas annotation
- * overlay, timestamped comments, live collaboration cursors, and a one-click
- * JSON export of the whole review (the brief's deliverable).
+ * Review surface that renders the room's shared media — a video (with timeline)
+ * or a blank whiteboard — with a Canvas annotation overlay, timestamped
+ * comments, live cursors and a one-click JSON export. The media itself is
+ * managed by the room owner via <MediaControls>.
  */
 export function ReviewPlayer(props: ReviewPlayerProps) {
   const {
-    src,
     room,
+    media,
+    isOwner,
+    onSetMedia,
+    onRemoveMedia,
     annotations,
     comments,
     peers,
@@ -91,7 +102,10 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   const [muted, setMuted] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
 
-  // --- video element wiring ----------------------------------------------
+  const isVideo = media?.kind === 'video';
+  const isWhiteboard = media?.kind === 'whiteboard';
+
+  // --- video element wiring (only relevant in video mode) ----------------
 
   useEffect(() => {
     const v = videoRef.current;
@@ -116,19 +130,26 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
       v.removeEventListener('pause', onPause);
       v.removeEventListener('volumechange', onVol);
     };
-  }, []);
+  }, [isVideo, media?.src]);
 
-  // Keep the canvas exactly the size of the rendered video.
+  // Reset transport state whenever the media changes.
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    const ro = new ResizeObserver(() => {
-      setSize({ w: v.clientWidth, h: v.clientHeight });
-    });
-    ro.observe(v);
-    setSize({ w: v.clientWidth, h: v.clientHeight });
+    setCurrentTime(0);
+    setDuration(0);
+    setPlaying(false);
+  }, [media?.kind, media?.src]);
+
+  // Keep the canvas exactly the size of the rendered surface.
+  useEffect(() => {
+    const el = isVideo ? videoRef.current : stageRef.current;
+    if (!el) return;
+    const measure = () =>
+      setSize({ w: el.clientWidth, h: el.clientHeight });
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
     return () => ro.disconnect();
-  }, []);
+  }, [isVideo, isWhiteboard, media?.src]);
 
   useEffect(() => {
     const onFs = () => setFullscreen(Boolean(document.fullscreenElement));
@@ -138,17 +159,25 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) v.play();
-    else v.pause();
-  }, []);
+    if (!v || !isVideo) return; // no-op for whiteboard / no media
+    if (v.paused) {
+      // play() returns a promise that rejects if there is no playable source.
+      const p = v.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } else {
+      v.pause();
+    }
+  }, [isVideo]);
 
-  const seek = useCallback((time: number) => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = Math.max(0, Math.min(time, v.duration || time));
-    setCurrentTime(v.currentTime);
-  }, []);
+  const seek = useCallback(
+    (time: number) => {
+      const v = videoRef.current;
+      if (!v || !isVideo) return;
+      v.currentTime = Math.max(0, Math.min(time, v.duration || time));
+      setCurrentTime(v.currentTime);
+    },
+    [isVideo],
+  );
 
   const toggleMute = useCallback(() => {
     const v = videoRef.current;
@@ -220,9 +249,13 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
 
   // --- derived data -------------------------------------------------------
 
+  // On a whiteboard there is no timeline, so every annotation is always shown.
   const visibleAnnotations = useMemo(
-    () => annotations.filter((a) => isVisibleAt(a, currentTime)),
-    [annotations, currentTime],
+    () =>
+      isWhiteboard
+        ? annotations
+        : annotations.filter((a) => isVisibleAt(a, currentTime)),
+    [annotations, currentTime, isWhiteboard],
   );
 
   const cursorList = useMemo(() => {
@@ -235,7 +268,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   // --- actions ------------------------------------------------------------
 
   function handleCreate(a: Annotation) {
-    videoRef.current?.pause();
+    if (isVideo) videoRef.current?.pause();
     onCreateAnnotation(a);
   }
 
@@ -260,7 +293,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   }
 
   function handleExport() {
-    const bundle = buildExport({ room, src, duration, annotations, comments });
+    const bundle = buildExport({ room, media, duration, annotations, comments });
     const safeRoom = room.replace(/[^a-z0-9-_]+/gi, '-');
     downloadJSON(bundle, `drift-stream_${safeRoom}_${Date.now()}.json`);
     toast.success(
@@ -270,43 +303,66 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
 
   const annotationCount = annotations.length;
   const VolIcon = muted || volume === 0 ? VolumeX : Volume2;
+  const canAnnotate = Boolean(media);
 
   return (
     <div className="review-player">
       <div className="stage-col">
-        <Toolbar
-          tool={tool}
-          setTool={setTool}
-          color={color}
-          setColor={setColor}
-          strokeWidth={strokeWidth}
-          setStrokeWidth={setStrokeWidth}
-          onClear={handleClear}
+        <MediaControls
+          media={media}
+          isOwner={isOwner}
+          onSetMedia={onSetMedia}
+          onRemoveMedia={onRemoveMedia}
         />
 
-        <div className={`stage ${fullscreen ? 'is-fullscreen' : ''}`} ref={stageRef}>
-          <video
-            ref={videoRef}
-            className="video"
-            src={src}
-            playsInline
-            onClick={() => tool === 'select' && togglePlay()}
-          />
-          <AnnotationCanvas
-            width={size.w}
-            height={size.h}
+        {canAnnotate && (
+          <Toolbar
             tool={tool}
+            setTool={setTool}
             color={color}
+            setColor={setColor}
             strokeWidth={strokeWidth}
-            currentTime={currentTime}
-            annotations={visibleAnnotations}
-            cursors={cursorList}
-            onCreate={handleCreate}
-            onCursorMove={onCursorMove}
-            promptText={() => window.prompt('Texte de l’annotation :')}
+            setStrokeWidth={setStrokeWidth}
+            onClear={handleClear}
           />
+        )}
 
-          {visibleAnnotations.length > 0 && (
+        <div
+          className={`stage ${fullscreen ? 'is-fullscreen' : ''} ${
+            isWhiteboard ? `whiteboard ${media?.background ?? 'white'}` : ''
+          }`}
+          ref={stageRef}
+        >
+          {isVideo && (
+            <video
+              ref={videoRef}
+              className="video"
+              src={media!.src}
+              playsInline
+              onClick={() => tool === 'select' && togglePlay()}
+            />
+          )}
+
+          {canAnnotate ? (
+            <AnnotationCanvas
+              width={size.w}
+              height={size.h}
+              tool={tool}
+              color={color}
+              strokeWidth={strokeWidth}
+              currentTime={currentTime}
+              annotations={visibleAnnotations}
+              cursors={cursorList}
+              alwaysVisible={isWhiteboard}
+              onCreate={handleCreate}
+              onCursorMove={onCursorMove}
+              promptText={() => window.prompt('Texte de l’annotation :')}
+            />
+          ) : (
+            <MediaPlaceholder isOwner={isOwner} />
+          )}
+
+          {isVideo && visibleAnnotations.length > 0 && (
             <motion.div
               className="frame-badge"
               initial={{ opacity: 0, y: -6 }}
@@ -329,76 +385,96 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
             </motion.div>
           )}
 
-          {!playing && (
+          {isWhiteboard && (
+            <div className="frame-badge">
+              <PenSquare size={13} /> <span>Tableau blanc partagé</span>
+            </div>
+          )}
+
+          {isVideo && !playing && (
             <button className="big-play" onClick={togglePlay} aria-label="Lecture">
               <Play size={30} fill="currentColor" />
             </button>
           )}
         </div>
 
-        <div className="timeline">
-          <button
-            className="play-btn"
-            onClick={togglePlay}
-            title={playing ? 'Pause (espace)' : 'Lecture (espace)'}
-          >
-            {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
-          </button>
-
-          <button className="ctrl-btn" onClick={() => seek(currentTime - 5)} title="-5s (←)">
-            <Rewind size={17} />
-          </button>
-          <button className="ctrl-btn" onClick={() => seek(currentTime + 5)} title="+5s (→)">
-            <FastForward size={17} />
-          </button>
-
-          <Track
-            duration={duration}
-            currentTime={currentTime}
-            annotations={annotations}
-            comments={comments}
-            onSeek={seek}
-          />
-
-          <div className="time-label">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </div>
-
-          <div className="volume">
-            <button className="ctrl-btn" onClick={toggleMute} title="Muet (M)">
-              <VolIcon size={17} />
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={muted ? 0 : volume}
-              onChange={(e) => setVol(Number(e.target.value))}
-            />
-          </div>
-
-          <button className="ctrl-btn" onClick={toggleFullscreen} title="Plein écran (F)">
-            {fullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
-          </button>
-        </div>
-
-        <div className="actions-bar">
-          <PresenceBar peers={peers} self={self} status={status} />
-          <div className="actions-right">
-            <span className="counter" title="Annotations dans la revue">
-              <PenLine size={14} /> {annotationCount}
-            </span>
-            <motion.button
-              className="export-btn"
-              onClick={handleExport}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
+        {isVideo && (
+          <div className="timeline">
+            <button
+              className="play-btn"
+              onClick={togglePlay}
+              title={playing ? 'Pause (espace)' : 'Lecture (espace)'}
             >
-              <Download size={16} /> Exporter JSON
-            </motion.button>
+              {playing ? (
+                <Pause size={17} fill="currentColor" />
+              ) : (
+                <Play size={17} fill="currentColor" />
+              )}
+            </button>
+
+            <button className="ctrl-btn" onClick={() => seek(currentTime - 5)} title="-5s (←)">
+              <Rewind size={17} />
+            </button>
+            <button className="ctrl-btn" onClick={() => seek(currentTime + 5)} title="+5s (→)">
+              <FastForward size={17} />
+            </button>
+
+            <Track
+              duration={duration}
+              currentTime={currentTime}
+              annotations={annotations}
+              comments={comments}
+              onSeek={seek}
+            />
+
+            <div className="time-label">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </div>
+
+            <div className="volume">
+              <button className="ctrl-btn" onClick={toggleMute} title="Muet (M)">
+                <VolIcon size={17} />
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={muted ? 0 : volume}
+                onChange={(e) => setVol(Number(e.target.value))}
+              />
+            </div>
+
+            <button className="ctrl-btn" onClick={toggleFullscreen} title="Plein écran (F)">
+              {fullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
+            </button>
           </div>
-        </div>
+        )}
+
+        {canAnnotate && (
+          <div className="actions-bar">
+            <PresenceBar peers={peers} self={self} status={status} />
+            <div className="actions-right">
+              <span className="counter" title="Annotations dans la revue">
+                <PenLine size={14} /> {annotationCount}
+              </span>
+              <motion.button
+                className="export-btn"
+                onClick={handleExport}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <Download size={16} /> Exporter JSON
+              </motion.button>
+            </div>
+          </div>
+        )}
+
+        {!canAnnotate && (
+          <div className="actions-bar">
+            <PresenceBar peers={peers} self={self} status={status} />
+          </div>
+        )}
       </div>
 
       <CommentsPanel
@@ -409,6 +485,25 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
         onDelete={onDeleteComment}
         onSeek={seek}
       />
+    </div>
+  );
+}
+
+// --- empty state when no media is set -------------------------------------
+
+function MediaPlaceholder({ isOwner }: { isOwner: boolean }) {
+  return (
+    <div className="media-placeholder">
+      <div className="media-placeholder-icons">
+        <Film size={30} />
+        <PenSquare size={30} />
+      </div>
+      <h3>Aucun média dans la salle</h3>
+      <p>
+        {isOwner
+          ? 'Chargez une vidéo ou démarrez un tableau blanc depuis la barre ci-dessus.'
+          : 'Le propriétaire de la salle n’a pas encore choisi de média.'}
+      </p>
     </div>
   );
 }

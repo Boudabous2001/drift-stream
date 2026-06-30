@@ -4,7 +4,9 @@
   "exportedAt": "2026-06-30T10:00:00.000Z",
   "room": "revue-demo",
   "media": {
+    "kind": "video",
     "src": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    "title": "Big Buck Bunny",
     "duration": 596.47
   },
   "annotations": [

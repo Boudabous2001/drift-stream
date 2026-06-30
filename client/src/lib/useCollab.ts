@@ -1,22 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Annotation, Comment, Peer, RemoteCursor } from './types';
+import type { Annotation, Comment, Media, Peer, RemoteCursor } from './types';
 
 export interface CollabState {
   status: 'connecting' | 'online' | 'offline';
   self: Peer | null;
   peers: Peer[];
+  ownerId: string | null;
+  media: Media | null;
   annotations: Annotation[];
   comments: Comment[];
   cursors: Record<string, RemoteCursor>;
 }
 
 export interface CollabApi extends CollabState {
+  isOwner: boolean;
   upsertAnnotation: (a: Annotation) => void;
   deleteAnnotation: (id: string) => void;
   clearAnnotations: () => void;
   addComment: (c: Comment) => void;
   deleteComment: (id: string) => void;
   sendCursor: (x: number, y: number) => void;
+  setMedia: (media: Media) => void;
+  removeMedia: () => void;
 }
 
 /** Resolve the collab server URL (dev proxy by default, overridable via env). */
@@ -41,15 +46,15 @@ export function useCollab(roomId: string, name: string): CollabApi {
     status: 'connecting',
     self: null,
     peers: [],
+    ownerId: null,
+    media: null,
     annotations: [],
     comments: [],
     cursors: {},
   });
 
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cursorThrottle = useRef(0);
-  const aliveRef = useRef(true);
 
   const sendRaw = useCallback((payload: unknown) => {
     const ws = wsRef.current;
@@ -59,9 +64,14 @@ export function useCollab(roomId: string, name: string): CollabApi {
   }, []);
 
   useEffect(() => {
-    aliveRef.current = true;
+    // `cancelled` is scoped to THIS effect run. React StrictMode mounts the
+    // component twice in dev; without this, the first socket's onclose would
+    // reconnect after the second mount and we'd end up with duplicate peers.
+    let cancelled = false;
+    let reconnect: ReturnType<typeof setTimeout> | null = null;
 
     function connect() {
+      if (cancelled) return;
       let ws: WebSocket;
       try {
         ws = new WebSocket(resolveUrl());
@@ -72,14 +82,18 @@ export function useCollab(roomId: string, name: string): CollabApi {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (cancelled) {
+          ws.close();
+          return;
+        }
         setState((s) => ({ ...s, status: 'online' }));
         ws.send(JSON.stringify({ type: 'join', roomId, name }));
       };
 
       ws.onclose = () => {
-        if (!aliveRef.current) return;
+        if (cancelled) return; // this run was torn down — do not reconnect
         setState((s) => ({ ...s, status: 'offline' }));
-        reconnectRef.current = setTimeout(connect, 1500);
+        reconnect = setTimeout(connect, 1500);
       };
 
       ws.onerror = () => ws.close();
@@ -98,9 +112,11 @@ export function useCollab(roomId: string, name: string): CollabApi {
     connect();
 
     return () => {
-      aliveRef.current = false;
-      if (reconnectRef.current) clearTimeout(reconnectRef.current);
-      wsRef.current?.close();
+      cancelled = true;
+      if (reconnect) clearTimeout(reconnect);
+      const ws = wsRef.current;
+      // Only close a socket that is actually open/connecting for this run.
+      if (ws) ws.close();
     };
   }, [roomId, name]);
 
@@ -159,14 +175,32 @@ export function useCollab(roomId: string, name: string): CollabApi {
     [sendRaw],
   );
 
+  const setMedia = useCallback(
+    (media: Media) => {
+      // Owner-only; the server enforces this too. Switching media resets the
+      // local annotations/comments so the canvas matches the new surface.
+      setState((s) => ({ ...s, media, annotations: [], comments: [] }));
+      sendRaw({ type: 'media:set', media });
+    },
+    [sendRaw],
+  );
+
+  const removeMedia = useCallback(() => {
+    setState((s) => ({ ...s, media: null, annotations: [], comments: [] }));
+    sendRaw({ type: 'media:remove' });
+  }, [sendRaw]);
+
   return {
     ...state,
+    isOwner: Boolean(state.self && state.ownerId && state.self.id === state.ownerId),
     upsertAnnotation,
     deleteAnnotation,
     clearAnnotations,
     addComment,
     deleteComment,
     sendCursor,
+    setMedia,
+    removeMedia,
   };
 }
 
@@ -194,12 +228,21 @@ function applyServerMessage(
         ...s,
         self: msg.self,
         peers: msg.peers ?? [],
+        ownerId: msg.ownerId ?? null,
+        media: msg.media ?? null,
         annotations: msg.annotations ?? [],
         comments: sortByTime(msg.comments ?? []),
       }));
       break;
     case 'presence':
-      setState((s) => ({ ...s, peers: msg.peers ?? [] }));
+      setState((s) => ({
+        ...s,
+        peers: msg.peers ?? [],
+        ownerId: msg.ownerId !== undefined ? msg.ownerId : s.ownerId,
+      }));
+      break;
+    case 'media:update':
+      setState((s) => ({ ...s, media: msg.media ?? null }));
       break;
     case 'annotation:upsert':
       setState((s) => ({ ...s, annotations: upsert(s.annotations, msg.annotation) }));

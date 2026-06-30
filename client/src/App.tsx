@@ -11,30 +11,15 @@ import {
   PenTool,
   MessageSquare,
   Radio,
+  Crown,
 } from 'lucide-react';
 import { ReviewPlayer } from './components/ReviewPlayer';
 import { useCollab } from './lib/useCollab';
 import type { Peer } from './lib/types';
 
-const SAMPLE_VIDEOS: { label: string; src: string }[] = [
-  {
-    label: 'Big Buck Bunny (sample)',
-    src: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  },
-  {
-    label: 'Elephants Dream (sample)',
-    src: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-  },
-  {
-    label: 'For Bigger Blazes (sample)',
-    src: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-  },
-];
-
 interface Session {
   name: string;
   room: string;
-  src: string;
 }
 
 export default function App() {
@@ -85,6 +70,11 @@ function ReviewRoom({
           <span className="room-chip">
             <Radio size={13} /> {session.room}
           </span>
+          {collab.isOwner && (
+            <span className="owner-chip" title="Vous êtes propriétaire de la salle">
+              <Crown size={13} /> Propriétaire
+            </span>
+          )}
           <button className="ghost-btn" onClick={copyLink}>
             {copied ? <Check size={15} /> : <Link2 size={15} />}
             {copied ? 'Copié' : 'Inviter'}
@@ -96,8 +86,11 @@ function ReviewRoom({
       </header>
 
       <ReviewPlayer
-        src={session.src}
         room={session.room}
+        media={collab.media}
+        isOwner={collab.isOwner}
+        onSetMedia={collab.setMedia}
+        onRemoveMedia={collab.removeMedia}
         annotations={collab.annotations}
         comments={collab.comments}
         peers={collab.peers}
@@ -149,8 +142,6 @@ function JoinScreen({ onJoin }: { onJoin: (s: Session) => void }) {
   const params = useMemo(() => new URLSearchParams(location.search), []);
   const [name, setName] = useState('');
   const [room, setRoom] = useState(params.get('room') || 'revue-demo');
-  const [srcChoice, setSrcChoice] = useState(SAMPLE_VIDEOS[0].src);
-  const [customSrc, setCustomSrc] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('ds:name');
@@ -161,8 +152,7 @@ function JoinScreen({ onJoin }: { onJoin: (s: Session) => void }) {
     e.preventDefault();
     const finalName = name.trim() || 'Invité';
     localStorage.setItem('ds:name', finalName);
-    const src = customSrc.trim() || srcChoice;
-    onJoin({ name: finalName, room: room.trim() || 'lobby', src });
+    onJoin({ name: finalName, room: room.trim() || 'lobby' });
   }
 
   return (
@@ -214,32 +204,6 @@ function JoinScreen({ onJoin }: { onJoin: (s: Session) => void }) {
           />
         </label>
 
-        <label>
-          Vidéo à reviewer
-          <select
-            value={srcChoice}
-            onChange={(e) => {
-              setSrcChoice(e.target.value);
-              setCustomSrc('');
-            }}
-          >
-            {SAMPLE_VIDEOS.map((v) => (
-              <option key={v.src} value={v.src}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          …ou une URL personnalisée
-          <input
-            value={customSrc}
-            onChange={(e) => setCustomSrc(e.target.value)}
-            placeholder="https://…/ma-video.mp4"
-          />
-        </label>
-
         <motion.button
           type="submit"
           className="join-btn"
@@ -250,7 +214,9 @@ function JoinScreen({ onJoin }: { onJoin: (s: Session) => void }) {
         </motion.button>
 
         <p className="share-hint">
-          Partagez la même salle pour reviewer la vidéo à plusieurs, en temps réel.
+          Le <strong>premier arrivé</strong> devient propriétaire et choisit le
+          média (vidéo ou tableau blanc). Partagez la salle pour reviewer à
+          plusieurs, en temps réel.
         </p>
       </motion.form>
     </div>
