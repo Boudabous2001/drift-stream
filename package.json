@@ -1,8 +1,8 @@
 {
-  "name": "drift-stream",
+  "name": "phontom-frame",
   "version": "1.0.0",
   "private": true,
-  "description": "Lecteur de Revue Augmenté — collaborative video review player with canvas annotations and timestamped comments (Hackathon ESTIAM x 42C 2026, Pôle 1 / Sujet A).",
+  "description": "Phontom Frame — collaborative media review player with canvas annotations and timestamped comments.",
   "type": "module",
   "scripts": {
     "install:all": "npm install && npm --prefix client install && npm --prefix server install",

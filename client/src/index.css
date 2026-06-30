@@ -128,10 +128,32 @@ button {
   place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--accent), #ff9a5a);
+  border-radius: 11px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 45%),
+    linear-gradient(135deg, #10131f, #202536);
   color: #fff;
-  box-shadow: 0 6px 20px rgba(255, 92, 124, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 9px 24px rgba(0, 0, 0, 0.34), 0 0 0 4px rgba(56, 189, 248, 0.08);
+}
+
+.logo svg {
+  width: 78%;
+  height: 78%;
+}
+
+.logo-mark-frame {
+  fill: transparent;
+  stroke: #38bdf8;
+  stroke-width: 2.4;
+}
+
+.logo-mark-core {
+  fill: #ffffff;
+}
+
+.logo-mark-glint {
+  fill: #ff5c7c;
 }
 
 .logo.big {
@@ -472,6 +494,8 @@ button {
 /* ---------- Toolbar ---------- */
 
 .toolbar {
+  position: relative;
+  z-index: 12;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -543,25 +567,27 @@ button {
   left: 50%;
   transform: translateX(-50%) translateY(4px);
   background: #15171f;
-  border: 1px solid var(--border-hi);
-  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
   font-size: 11.5px;
-  font-weight: 500;
+  font-weight: 700;
   white-space: nowrap;
   padding: 4px 9px;
   border-radius: 7px;
   opacity: 0;
   pointer-events: none;
   transition: all 0.14s ease;
-  z-index: 30;
+  z-index: 80;
   display: flex;
   align-items: center;
   gap: 6px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
 }
 
 .tool-tip kbd {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
   border-radius: 4px;
   padding: 0 5px;
   font-size: 10px;
@@ -671,6 +697,10 @@ button {
 .media-url input:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.media-file-input {
+  display: none;
 }
 
 .media-load {
@@ -813,6 +843,22 @@ button {
   background: #000;
 }
 
+.media-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.05) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.05) 75%),
+    #08090f;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+  background-size: 20px 20px;
+}
+
 .annotation-layer {
   position: absolute;
   top: 0;
@@ -828,26 +874,27 @@ button {
 
 .text-editor {
   position: absolute;
-  z-index: 5;
-  min-width: 80px;
+  z-index: 8;
+  min-width: 140px;
   margin: 0;
-  padding: 4px 8px;
-  background: rgba(10, 12, 20, 0.82);
-  border: 1.5px solid #38bdf8;
-  border-radius: 7px;
+  padding: 10px 12px;
+  background: rgba(9, 11, 18, 0.94);
+  border: 2px solid #38bdf8;
+  border-radius: 10px;
   outline: none;
   resize: none;
-  overflow: hidden;
+  overflow: auto;
   font-family: ui-sans-serif, system-ui, sans-serif;
-  font-weight: 600;
-  line-height: 1.25;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  font-weight: 700;
+  line-height: 1.35;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 0 3px rgba(56, 189, 248, 0.18);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
   field-sizing: content;
 }
 
 .text-editor::placeholder {
-  color: rgba(255, 255, 255, 0.45);
-  font-weight: 500;
+  color: rgba(255, 255, 255, 0.68);
+  font-weight: 600;
 }
 
 .frame-badge {
@@ -1437,6 +1484,57 @@ button {
   background: var(--bg-1);
   color: var(--text);
   box-shadow: var(--shadow-sm);
+}
+
+.session-recall {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.resume-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.11);
+  color: var(--accent-2);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.resume-btn:hover {
+  border-color: rgba(56, 189, 248, 0.52);
+  background: rgba(56, 189, 248, 0.16);
+}
+
+.recent-rooms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.recent-rooms button {
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.recent-rooms button:hover {
+  color: var(--text);
+  border-color: var(--border-hi);
 }
 
 .room-create {

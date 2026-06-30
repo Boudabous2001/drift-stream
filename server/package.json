@@ -1,9 +1,9 @@
 {
-  "name": "drift-stream-server",
+  "name": "phontom-frame-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "WebSocket collaboration server for Drift Stream (rooms, annotations, timestamped comments, presence).",
+  "description": "WebSocket collaboration server for Phontom Frame (rooms, annotations, timestamped comments, presence).",
   "main": "index.js",
   "scripts": {
     "dev": "node --watch index.js",

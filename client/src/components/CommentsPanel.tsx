@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { MessageSquare, Send, Trash2, Clock } from 'lucide-react';
 import type { Comment, Peer } from '../lib/types';
@@ -8,38 +8,46 @@ interface Props {
   comments: Comment[];
   self: Peer | null;
   currentTime: number;
+  hasTimeline: boolean;
   onAdd: (text: string, atCurrentTime: boolean) => void;
   onDelete: (id: string) => void;
   onSeek: (time: number) => void;
 }
 
-/**
- * Timestamped comments thread. Each comment is anchored to a video time;
- * clicking it seeks the player there. New comments default to the current
- * playback position (the core "review" interaction).
- */
 export function CommentsPanel({
   comments,
   self,
   currentTime,
+  hasTimeline,
   onAdd,
   onDelete,
   onSeek,
 }: Props) {
   const [draft, setDraft] = useState('');
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (hasTimeline) return;
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [hasTimeline]);
 
   const sorted = useMemo(
-    () => [...comments].sort((a, b) => a.time - b.time),
-    [comments],
+    () =>
+      [...comments].sort((a, b) =>
+        hasTimeline ? a.time - b.time : (a.createdAt ?? 0) - (b.createdAt ?? 0),
+      ),
+    [comments, hasTimeline],
   );
 
   const activeId = useMemo(() => {
+    if (!hasTimeline) return null;
     let best: Comment | null = null;
     for (const c of sorted) {
       if (c.time <= currentTime + 0.25) best = c;
     }
     return best?.id ?? null;
-  }, [sorted, currentTime]);
+  }, [sorted, currentTime, hasTimeline]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,6 +55,7 @@ export function CommentsPanel({
     if (!text) return;
     onAdd(text, true);
     setDraft('');
+    if (!hasTimeline) setNow(Date.now());
   }
 
   return (
@@ -63,9 +72,9 @@ export function CommentsPanel({
           <div className="empty">
             <MessageSquare size={26} strokeWidth={1.5} />
             <p>
-              Aucun commentaire pour l’instant.
+              Aucun commentaire pour l'instant.
               <br />
-              Mettez la vidéo en pause et ajoutez une remarque horodatée.
+              Ajoutez une remarque horodatee.
             </p>
           </div>
         )}
@@ -82,18 +91,25 @@ export function CommentsPanel({
               className={`comment ${c.id === activeId ? 'active' : ''}`}
               style={{ ['--c' as string]: c.color }}
             >
-              <button
-                className="comment-time"
-                onClick={() => onSeek(c.time)}
-                title="Aller à ce moment"
-              >
-                <Clock size={12} />
-                {formatTime(c.time)}
-              </button>
+              {hasTimeline ? (
+                <button
+                  className="comment-time"
+                  onClick={() => onSeek(c.time)}
+                  title="Aller a ce moment"
+                >
+                  <Clock size={12} />
+                  {formatTime(c.time)}
+                </button>
+              ) : (
+                <span className="comment-time" title="Heure d'envoi">
+                  <Clock size={12} />
+                  {formatClock(c.createdAt)}
+                </span>
+              )}
               <div className="comment-body">
                 <div className="comment-meta">
                   <span className="dot" style={{ background: c.color }} />
-                  <strong>{c.authorName ?? 'Invité'}</strong>
+                  <strong>{c.authorName ?? 'Invite'}</strong>
                 </div>
                 <p>{c.text}</p>
               </div>
@@ -113,16 +129,19 @@ export function CommentsPanel({
 
       <form className="comment-form" onSubmit={submit}>
         <div className="comment-form-time">
-          <Clock size={12} /> à {formatTime(currentTime)}
+          <Clock size={12} /> a {hasTimeline ? formatTime(currentTime) : formatClock(now)}
         </div>
         <div className="comment-input-row">
           <textarea
             value={draft}
-            placeholder="Commenter cet instant…  (⌘/Ctrl + ↵)"
+            placeholder="Commenter cet instant...  (Entree pour envoyer)"
             rows={2}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submit(e);
+              }
             }}
           />
           <button type="submit" disabled={!draft.trim()} title="Envoyer">
@@ -132,4 +151,12 @@ export function CommentsPanel({
       </form>
     </aside>
   );
+}
+
+function formatClock(value?: number): string {
+  const date = value ? new Date(value) : new Date();
+  return date.toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }

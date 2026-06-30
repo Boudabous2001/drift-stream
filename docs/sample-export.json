@@ -1,5 +1,5 @@
 {
-  "schema": "drift-stream/review-export",
+  "schema": "phontom-frame/review-export",
   "version": 1,
   "exportedAt": "2026-06-30T10:00:00.000Z",
   "room": "revue-demo",

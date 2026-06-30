@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
-  Play,
   LogOut,
   Users,
   Link2,
@@ -12,6 +11,7 @@ import {
   MessageSquare,
   Radio,
   Crown,
+  Clock,
   Sun,
   Moon,
   Plus,
@@ -27,7 +27,16 @@ interface Session {
   room: string;
 }
 
+interface RecentSession extends Session {
+  lastJoinedAt: number;
+}
+
 type Theme = 'dark' | 'light';
+
+const NAME_KEY = 'pf:name';
+const LEGACY_NAME_KEY = 'ds:name';
+const LAST_SESSION_KEY = 'pf:last-session';
+const RECENT_SESSIONS_KEY = 'pf:recent-sessions';
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(
@@ -103,10 +112,10 @@ function ReviewRoom({
       <header className="app-header">
         <div className="brand">
           <span className="logo">
-            <Play size={18} fill="currentColor" />
+            <LogoMark />
           </span>
           <div>
-            <h1>Drift Stream</h1>
+            <h1>Phontom Frame</h1>
             <p>Lecteur de Revue Augmenté</p>
           </div>
         </div>
@@ -199,12 +208,51 @@ function usePeerToasts(peers: Peer[], self: Peer | null) {
   }, [peers, self]);
 }
 
+function LogoMark() {
+  return (
+    <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+      <path className="logo-mark-frame" d="M13 8h22l7 7v18l-7 7H13l-7-7V15l7-7Z" />
+      <path
+        className="logo-mark-core"
+        d="M18 15h12.5a8.5 8.5 0 0 1 0 17H24v7h-6V15Zm6 6v5h6.2a2.5 2.5 0 0 0 0-5H24Z"
+      />
+      <path className="logo-mark-glint" d="M35 9l5 5h-5V9Z" />
+    </svg>
+  );
+}
+
 // --- join / lobby screen --------------------------------------------------
 
 function randomRoom(): string {
   const words = ['revue', 'studio', 'sprint', 'demo', 'cut', 'plan'];
   const w = words[Math.floor(Math.random() * words.length)];
   return `${w}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function loadRecentSessions(): RecentSession[] {
+  try {
+    const raw = localStorage.getItem(RECENT_SESSIONS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((s): s is RecentSession => Boolean(s?.name && s?.room && s?.lastJoinedAt))
+      .sort((a, b) => b.lastJoinedAt - a.lastJoinedAt)
+      .slice(0, 5);
+  } catch {
+    return [];
+  }
+}
+
+function rememberSession(session: Session): RecentSession[] {
+  const next: RecentSession = { ...session, lastJoinedAt: Date.now() };
+  const recent = [
+    next,
+    ...loadRecentSessions().filter((s) => s.room.toLowerCase() !== session.room.toLowerCase()),
+  ].slice(0, 5);
+
+  localStorage.setItem(LAST_SESSION_KEY, JSON.stringify(next));
+  localStorage.setItem(RECENT_SESSIONS_KEY, JSON.stringify(recent));
+  return recent;
 }
 
 function JoinScreen({
@@ -222,23 +270,39 @@ function JoinScreen({
   const [name, setName] = useState('');
   const [room, setRoom] = useState(invited || '');
   const [createRoom, setCreateRoom] = useState(() => randomRoom());
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>(() => loadRecentSessions());
 
   useEffect(() => {
-    const saved = localStorage.getItem('ds:name');
+    const saved = localStorage.getItem(NAME_KEY) || localStorage.getItem(LEGACY_NAME_KEY);
     if (saved) setName(saved);
   }, []);
+
+  function joinSession(next: Session) {
+    localStorage.setItem(NAME_KEY, next.name);
+    localStorage.setItem(LEGACY_NAME_KEY, next.name);
+    setRecentSessions(rememberSession(next));
+    onJoin(next);
+  }
+
+  function resumeSession(saved: RecentSession) {
+    joinSession({
+      name: name.trim() || saved.name || 'Invite',
+      room: saved.room,
+    });
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const finalName = name.trim() || 'Invité';
-    localStorage.setItem('ds:name', finalName);
     const finalRoom =
       mode === 'create'
         ? createRoom.trim() || randomRoom()
         : room.trim();
     if (!finalRoom) return;
-    onJoin({ name: finalName, room: finalRoom });
+    joinSession({ name: finalName, room: finalRoom });
   }
+
+  const lastSession = recentSessions[0];
 
   return (
     <div className="join">
@@ -262,9 +326,9 @@ function JoinScreen({
             animate={{ rotate: 0, scale: 1 }}
             transition={{ type: 'spring', stiffness: 300, damping: 18, delay: 0.1 }}
           >
-            <Play size={26} fill="currentColor" />
+            <LogoMark />
           </motion.span>
-          <h1>Drift Stream</h1>
+          <h1>Phontom Frame</h1>
           <p className="tagline">Lecteur de Revue Augmenté</p>
         </div>
 
@@ -284,6 +348,34 @@ function JoinScreen({
             <LogIn size={15} /> Rejoindre
           </button>
         </div>
+
+        {lastSession && !invited && (
+          <div className="session-recall">
+            <button
+              type="button"
+              className="resume-btn"
+              onClick={() => resumeSession(lastSession)}
+            >
+              <Clock size={15} />
+              Reprendre {lastSession.room}
+            </button>
+
+            {recentSessions.length > 1 && (
+              <div className="recent-rooms" aria-label="Sessions recentes">
+                {recentSessions.slice(1, 4).map((s) => (
+                  <button
+                    type="button"
+                    key={`${s.room}-${s.lastJoinedAt}`}
+                    onClick={() => resumeSession(s)}
+                    title={`Reprendre ${s.room}`}
+                  >
+                    {s.room}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <label>
           Votre nom

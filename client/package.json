@@ -1,9 +1,9 @@
 {
-  "name": "drift-stream-client",
+  "name": "phontom-frame-client",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "React client: augmented video review player with canvas annotations and timestamped comments.",
+  "description": "React client for Phontom Frame: media review with canvas annotations and timestamped comments.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

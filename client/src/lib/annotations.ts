@@ -66,7 +66,7 @@ export function buildExport(args: {
   comments: Comment[];
 }): ExportBundle {
   return {
-    schema: 'drift-stream/review-export',
+    schema: 'phontom-frame/review-export',
     version: 1,
     exportedAt: new Date().toISOString(),
     room: args.room,

@@ -1,4 +1,4 @@
-/** Shared domain types for Drift Stream. */
+/** Shared domain types for Phontom Frame. */
 
 export type ShapeTool = 'arrow' | 'rect' | 'ellipse' | 'freehand' | 'text';
 export type Tool = ShapeTool | 'select' | 'eraser';
@@ -54,12 +54,12 @@ export interface Peer {
   isOwner?: boolean;
 }
 
-export type MediaKind = 'video' | 'whiteboard';
+export type MediaKind = 'video' | 'image' | 'whiteboard';
 
 /** The room's shared media surface (owner-managed). */
 export interface Media {
   kind: MediaKind;
-  /** Video source URL (when kind === 'video'). */
+  /** Source URL or data URL (when kind === 'video' | 'image'). */
   src?: string;
   title?: string;
   /** Whiteboard background (when kind === 'whiteboard'): 'white' | 'dark'. */
@@ -78,7 +78,7 @@ export interface RemoteCursor {
 
 /** Shape of the exported deliverable (annotations + comments as JSON). */
 export interface ExportBundle {
-  schema: 'drift-stream/review-export';
+  schema: 'phontom-frame/review-export';
   version: 1;
   exportedAt: string;
   room: string;

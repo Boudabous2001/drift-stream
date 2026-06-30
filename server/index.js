@@ -1,5 +1,5 @@
 /**
- * Drift Stream — WebSocket collaboration server
+ * Phontom Frame — WebSocket collaboration server
  * Hackathon ESTIAM x 42C 2026 — Pôle 1 / Sujet A "Lecteur de Revue Augmenté"
  *
  * Responsibilities:
@@ -14,7 +14,6 @@
 
 import { WebSocketServer } from 'ws';
 import { randomUUID } from 'node:crypto';
-
 const PORT = Number(process.env.PORT) || 8080;
 
 /**
@@ -40,7 +39,7 @@ function getRoom(roomId) {
       comments: [],
       peers: new Map(),
       owners: new Set(), // peer ids with owner rights (creator first; multi-owner)
-      media: null, // { kind: 'video'|'whiteboard', src?, title?, background? }
+      media: null, // { kind: 'video'|'image'|'whiteboard', src?, title?, background? }
     };
     rooms.set(roomId, room);
   }
@@ -57,9 +56,14 @@ function sanitizeMedia(media) {
     return { kind: 'whiteboard', background: bg };
   }
   if (media.kind === 'video') {
-    const src = String(media.src || '').slice(0, 2000);
-    if (!src) return null;
+    const src = String(media.src || '');
+    if (!src || src.length > 60_000_000) return null;
     return { kind: 'video', src, title: String(media.title || '').slice(0, 120) };
+  }
+  if (media.kind === 'image') {
+    const src = String(media.src || '');
+    if (!src || src.length > 12_000_000) return null;
+    return { kind: 'image', src, title: String(media.title || '').slice(0, 120) };
   }
   return null;
 }
@@ -93,11 +97,28 @@ function ownersList(room) {
   return [...room.owners];
 }
 
+function sanitizeClientId(value) {
+  const id = String(value || '').trim();
+  if (/^[a-zA-Z0-9_-]{8,80}$/.test(id)) return id;
+  return `client_${Math.random().toString(36).slice(2, 12)}_${Date.now().toString(36)}`;
+}
+
 const wss = new WebSocketServer({ port: PORT });
+
+wss.on('error', (err) => {
+  if (err?.code === 'EADDRINUSE') {
+    // eslint-disable-next-line no-console
+    console.error(
+      `Port ${PORT} deja utilise. Fermez l'ancien serveur Phontom Frame ou changez la variable PORT.`,
+    );
+    process.exit(1);
+  }
+  throw err;
+});
 
 wss.on('connection', (ws) => {
   /** Per-connection state, populated on `join`. */
-  ws.meta = { id: randomUUID(), roomId: null };
+  ws.meta = { id: null, roomId: null };
 
   ws.on('message', (raw) => {
     let msg;
@@ -151,12 +172,22 @@ function handleMessage(ws, msg) {
 function handleJoin(ws, msg) {
   const roomId = String(msg.roomId || 'lobby');
   const room = getRoom(roomId);
+  const id = sanitizeClientId(msg.clientId);
+
+  for (const [peerWs, p] of room.peers) {
+    if (p.id === id && peerWs !== ws) {
+      room.peers.delete(peerWs);
+      peerWs.close();
+    }
+  }
+
   const color = COLORS[room.peers.size % COLORS.length];
   const peer = {
-    id: ws.meta.id,
+    id,
     name: (msg.name && String(msg.name).slice(0, 40)) || 'Invité',
     color,
   };
+  ws.meta.id = id;
   ws.meta.roomId = roomId;
   room.peers.set(ws, peer);
 
@@ -300,11 +331,13 @@ function handleCommentAdd(ws, msg) {
     authorId: peer?.id,
     authorName: peer?.name,
     color: peer?.color,
-    createdAt: Date.now(),
+    createdAt: Number(msg.comment.createdAt) || Date.now(),
   };
   if (!comment.text) return;
   room.comments.push(comment);
-  room.comments.sort((a, b) => a.time - b.time);
+  room.comments.sort((a, b) =>
+    room.media?.kind === 'video' ? a.time - b.time : a.createdAt - b.createdAt,
+  );
   broadcast(room, { type: 'comment:add', comment });
 }
 
@@ -354,9 +387,10 @@ function handleLeave(ws) {
   room.peers.delete(ws);
 
   if (peer) {
-    room.owners.delete(peer.id);
-    // A room must always keep at least one owner: promote the oldest peer left.
-    if (room.owners.size === 0 && room.peers.size > 0) {
+    // Owner roles are tied to the browser identity, not the socket. Keep the
+    // owner id so reconnecting users recover their role.
+    const hasOnlineOwner = [...room.peers.values()].some((p) => room.owners.has(p.id));
+    if (!hasOnlineOwner && room.peers.size > 0) {
       const next = room.peers.values().next().value;
       room.owners.add(next.id);
     }
@@ -374,4 +408,4 @@ function handleLeave(ws) {
 }
 
 // eslint-disable-next-line no-console
-console.log(`🎬 Drift Stream collab server listening on ws://localhost:${PORT}`);
+console.log(`Phontom Frame collab server listening on ws://localhost:${PORT}`);

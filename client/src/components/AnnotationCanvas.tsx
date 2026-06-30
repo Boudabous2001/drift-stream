@@ -15,6 +15,7 @@ interface Props {
   cursors: RemoteCursor[];
   /** When true, every annotation is fully opaque (whiteboard mode, no timeline). */
   alwaysVisible?: boolean;
+  onBeginTextEdit?: () => void;
   onCreate: (a: Annotation) => void;
   onUpdate: (a: Annotation) => void;
   onDelete: (id: string) => void;
@@ -61,6 +62,7 @@ export function AnnotationCanvas({
   annotations,
   cursors,
   alwaysVisible = false,
+  onBeginTextEdit,
   onCreate,
   onUpdate,
   onDelete,
@@ -227,6 +229,7 @@ export function AnnotationCanvas({
 
     if (tool === 'text') {
       // Open the inline editor at the click position (Canva-style).
+      onBeginTextEdit?.();
       openTextEditor(null, p.x, p.y);
       return;
     }
@@ -323,6 +326,7 @@ export function AnnotationCanvas({
     const p = pointFromXY(e.clientX, e.clientY);
     const hit = hitTest(p);
     if (hit && hit.tool === 'text') {
+      onBeginTextEdit?.();
       openTextEditor(hit.id, hit.x1 ?? p.x, hit.y1 ?? p.y, hit.text ?? '', hit.color, hit.strokeWidth);
     }
   }
@@ -379,7 +383,10 @@ export function AnnotationCanvas({
   const interactive = true;
   const cursorStyle =
     tool === 'select' ? 'default' : tool === 'eraser' ? 'cell' : 'crosshair';
-  const fontSize = editing ? Math.max(14, editing.strokeWidth * 6) : 16;
+  const fontSize = editing ? Math.max(16, editing.strokeWidth * 6) : 16;
+  const editorBox = editing
+    ? getTextEditorBox(editing.nx, editing.ny, width, height, fontSize)
+    : null;
 
   return (
     <div className="annotation-layer" style={{ width, height }}>
@@ -405,11 +412,13 @@ export function AnnotationCanvas({
           autoFocus
           value={editing.value}
           style={{
-            left: editing.nx * width,
-            top: editing.ny * height,
+            left: editorBox?.x ?? editing.nx * width,
+            top: editorBox?.y ?? editing.ny * height,
             color: editing.color,
             fontSize,
-            maxWidth: Math.max(120, width - editing.nx * width - 8),
+            width: editorBox?.w,
+            maxWidth: editorBox?.w,
+            minHeight: editorBox?.h,
           }}
           onChange={(ev) => setEditing({ ...editing, value: ev.target.value })}
           onBlur={commitText}
@@ -481,6 +490,21 @@ function resize(a: Annotation, handle: HandleId, p: NPoint): Annotation {
       break;
   }
   return next;
+}
+
+function getTextEditorBox(nx: number, ny: number, width: number, height: number, fontSize: number) {
+  const margin = 12;
+  const preferredWidth = Math.min(360, Math.max(180, width * 0.36));
+  const editorHeight = Math.max(56, fontSize * 2.6);
+  const rawX = nx * width;
+  const rawY = ny * height;
+
+  return {
+    x: Math.max(margin, Math.min(rawX, width - preferredWidth - margin)),
+    y: Math.max(margin, Math.min(rawY, height - editorHeight - margin)),
+    w: Math.max(140, Math.min(preferredWidth, width - margin * 2)),
+    h: editorHeight,
+  };
 }
 
 /** Handle positions (in px) for the selection of an annotation. */
@@ -632,7 +656,10 @@ function drawAnnotation(
       const fontSize = Math.max(14, a.strokeWidth * 6);
       ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
       ctx.textBaseline = 'top';
-      const metrics = ctx.measureText(a.text ?? '');
+      const text = a.text ?? '';
+      const available = Math.max(80, w - x1 - 16);
+      const clipped = clipText(ctx, text, available);
+      const metrics = ctx.measureText(clipped);
       const padX = 8;
       const padY = 5;
       ctx.globalAlpha = alpha * 0.85;
@@ -641,7 +668,7 @@ function drawAnnotation(
       ctx.fill();
       ctx.globalAlpha = alpha;
       ctx.fillStyle = a.color;
-      ctx.fillText(a.text ?? '', x1, y1);
+      ctx.fillText(clipped, x1, y1);
       break;
     }
     default:
@@ -741,6 +768,19 @@ function drawCursor(ctx: CanvasRenderingContext2D, c: RemoteCursor, w: number, h
   ctx.textBaseline = 'middle';
   ctx.fillText(label, x + 18, y + 18);
   ctx.restore();
+}
+
+function clipText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  const ellipsis = '...';
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (ctx.measureText(text.slice(0, mid) + ellipsis).width <= maxWidth) lo = mid;
+    else hi = mid - 1;
+  }
+  return text.slice(0, lo) + ellipsis;
 }
 
 function roundRect(

@@ -14,6 +14,7 @@ import {
   PenLine,
   X,
   Film,
+  Image,
   PenSquare,
 } from 'lucide-react';
 import type {
@@ -59,7 +60,7 @@ export interface ReviewPlayerProps {
 }
 
 /**
- * Drift Stream — Lecteur de Revue Augmenté.
+ * Phontom Frame — Lecteur de Revue Augmenté.
  *
  * Review surface that renders the room's shared media — a video (with timeline)
  * or a blank whiteboard — with a Canvas annotation overlay, timestamped
@@ -88,6 +89,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   } = props;
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
   const [tool, setTool] = useState<Tool>('arrow');
@@ -103,6 +105,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   const [fullscreen, setFullscreen] = useState(false);
 
   const isVideo = media?.kind === 'video';
+  const isImage = media?.kind === 'image';
   const isWhiteboard = media?.kind === 'whiteboard';
 
   // --- video element wiring (only relevant in video mode) ----------------
@@ -141,7 +144,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
 
   // Keep the canvas exactly the size of the rendered surface.
   useEffect(() => {
-    const el = isVideo ? videoRef.current : stageRef.current;
+    const el = isVideo ? videoRef.current : isImage ? imageRef.current : stageRef.current;
     if (!el) return;
     const measure = () =>
       setSize({ w: el.clientWidth, h: el.clientHeight });
@@ -149,7 +152,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
     ro.observe(el);
     measure();
     return () => ro.disconnect();
-  }, [isVideo, isWhiteboard, media?.src]);
+  }, [isVideo, isImage, isWhiteboard, media?.src]);
 
   useEffect(() => {
     const onFs = () => setFullscreen(Boolean(document.fullscreenElement));
@@ -252,13 +255,13 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
 
   // --- derived data -------------------------------------------------------
 
-  // On a whiteboard there is no timeline, so every annotation is always shown.
+  // On images and whiteboards there is no timeline, so every annotation is always shown.
   const visibleAnnotations = useMemo(
     () =>
-      isWhiteboard
+      isImage || isWhiteboard
         ? annotations
         : annotations.filter((a) => isVisibleAt(a, currentTime)),
-    [annotations, currentTime, isWhiteboard],
+    [annotations, currentTime, isImage, isWhiteboard],
   );
 
   const cursorList = useMemo(() => {
@@ -276,10 +279,11 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   }
 
   function handleAddComment(text: string) {
+    const mediaTime = isVideo && Number.isFinite(currentTime) ? currentTime : 0;
     const c: Comment = {
       id: uid('c'),
       text,
-      time: currentTime,
+      time: mediaTime,
       authorId: self?.id,
       authorName: self?.name,
       color: self?.color,
@@ -298,7 +302,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   function handleExport() {
     const bundle = buildExport({ room, media, duration, annotations, comments });
     const safeRoom = room.replace(/[^a-z0-9-_]+/gi, '-');
-    downloadJSON(bundle, `drift-stream_${safeRoom}_${Date.now()}.json`);
+    downloadJSON(bundle, `phontom-frame_${safeRoom}_${Date.now()}.json`);
     toast.success(
       `Export JSON · ${annotations.length} annotation(s), ${comments.length} commentaire(s)`,
     );
@@ -340,6 +344,15 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
             <video ref={videoRef} className="video" src={media!.src} playsInline />
           )}
 
+          {isImage && (
+            <img
+              ref={imageRef}
+              className="media-image"
+              src={media!.src}
+              alt={media?.title || 'Media de revue'}
+            />
+          )}
+
           {canAnnotate ? (
             <AnnotationCanvas
               width={size.w}
@@ -350,7 +363,10 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
               currentTime={currentTime}
               annotations={visibleAnnotations}
               cursors={cursorList}
-              alwaysVisible={isWhiteboard}
+              alwaysVisible={isImage || isWhiteboard}
+              onBeginTextEdit={() => {
+                if (isVideo) videoRef.current?.pause();
+              }}
               onCreate={handleCreate}
               onUpdate={onCreateAnnotation}
               onDelete={onDeleteAnnotation}
@@ -386,6 +402,12 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
           {isWhiteboard && (
             <div className="frame-badge">
               <PenSquare size={13} /> <span>Tableau blanc partagé</span>
+            </div>
+          )}
+
+          {isImage && (
+            <div className="frame-badge">
+              <Image size={13} /> <span>Image partagee</span>
             </div>
           )}
 
@@ -479,6 +501,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
         comments={comments}
         self={self}
         currentTime={currentTime}
+        hasTimeline={isVideo}
         onAdd={(text) => handleAddComment(text)}
         onDelete={onDeleteComment}
         onSeek={seek}

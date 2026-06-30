@@ -46,6 +46,18 @@ function resolveUrl(): string {
   return `${proto}://${location.host}/ws`;
 }
 
+function getClientId(): string {
+  const key = 'pf:client-id';
+  const saved = localStorage.getItem(key);
+  if (saved) return saved;
+  const id =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `client_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  localStorage.setItem(key, id);
+  return id;
+}
+
 /**
  * Real-time collaboration over WebSockets.
  *
@@ -59,6 +71,7 @@ export function useCollab(
   name: string,
   events?: CollabEvents,
 ): CollabApi {
+  const clientIdRef = useRef<string>(getClientId());
   const [state, setState] = useState<CollabState>({
     status: 'connecting',
     self: null,
@@ -109,7 +122,7 @@ export function useCollab(
           return;
         }
         setState((s) => ({ ...s, status: 'online' }));
-        ws.send(JSON.stringify({ type: 'join', roomId, name }));
+        ws.send(JSON.stringify({ type: 'join', roomId, name, clientId: clientIdRef.current }));
       };
 
       ws.onclose = () => {
@@ -269,8 +282,10 @@ function upsert(list: Annotation[], a: Annotation): Annotation[] {
   return next;
 }
 
-function sortByTime<T extends { time: number }>(list: T[]): T[] {
-  return [...list].sort((a, b) => a.time - b.time);
+function sortByTime<T extends { time: number; createdAt?: number }>(list: T[]): T[] {
+  return [...list].sort(
+    (a, b) => a.time - b.time || (a.createdAt ?? 0) - (b.createdAt ?? 0),
+  );
 }
 
 function applyServerMessage(
