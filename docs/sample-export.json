@@ -1,0 +1,74 @@
+{
+  "schema": "drift-stream/review-export",
+  "version": 1,
+  "exportedAt": "2026-06-30T10:00:00.000Z",
+  "room": "revue-demo",
+  "media": {
+    "src": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    "duration": 596.47
+  },
+  "annotations": [
+    {
+      "id": "a_1f2a",
+      "tool": "arrow",
+      "time": 12.5,
+      "color": "#ff5c7c",
+      "strokeWidth": 3,
+      "x1": 0.21,
+      "y1": 0.18,
+      "x2": 0.46,
+      "y2": 0.42,
+      "authorId": "p1",
+      "authorName": "Selyess",
+      "createdAt": 1782813600000
+    },
+    {
+      "id": "a_77bd",
+      "tool": "rect",
+      "time": 34.0,
+      "color": "#36c5f0",
+      "strokeWidth": 3,
+      "x1": 0.55,
+      "y1": 0.30,
+      "x2": 0.82,
+      "y2": 0.66,
+      "authorId": "p2",
+      "authorName": "Maya",
+      "createdAt": 1782813640000
+    },
+    {
+      "id": "a_90ce",
+      "tool": "text",
+      "time": 34.0,
+      "color": "#ecb22e",
+      "strokeWidth": 3,
+      "x1": 0.56,
+      "y1": 0.24,
+      "text": "Logo trop petit",
+      "authorId": "p2",
+      "authorName": "Maya",
+      "createdAt": 1782813642000
+    }
+  ],
+  "comments": [
+    {
+      "id": "c_a01",
+      "text": "Recadrer ce plan, le sujet est décentré.",
+      "time": 12.5,
+      "annotationId": "a_1f2a",
+      "authorId": "p1",
+      "authorName": "Selyess",
+      "color": "#ff5c7c",
+      "createdAt": 1782813601000
+    },
+    {
+      "id": "c_b02",
+      "text": "+1, et la transition juste après est un peu sèche.",
+      "time": 34.0,
+      "authorId": "p2",
+      "authorName": "Maya",
+      "color": "#36c5f0",
+      "createdAt": 1782813643000
+    }
+  ]
+}
