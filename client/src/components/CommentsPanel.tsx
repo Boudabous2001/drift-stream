@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { MessageSquare, Send, Trash2, Clock } from 'lucide-react';
 import type { Comment, Peer } from '../lib/types';
 import { formatTime } from '../lib/annotations';
 
@@ -31,7 +33,6 @@ export function CommentsPanel({
     [comments],
   );
 
-  // Which comment is "active" relative to the playhead.
   const activeId = useMemo(() => {
     let best: Comment | null = null;
     for (const c of sorted) {
@@ -51,64 +52,83 @@ export function CommentsPanel({
   return (
     <aside className="comments-panel">
       <header className="comments-header">
-        <h2>Commentaires</h2>
+        <h2>
+          <MessageSquare size={16} /> Commentaires
+        </h2>
         <span className="badge">{comments.length}</span>
       </header>
 
       <div className="comments-list">
         {sorted.length === 0 && (
-          <p className="empty">
-            Aucun commentaire. Mettez la vidéo en pause et ajoutez une remarque
-            horodatée 👇
-          </p>
+          <div className="empty">
+            <MessageSquare size={26} strokeWidth={1.5} />
+            <p>
+              Aucun commentaire pour l’instant.
+              <br />
+              Mettez la vidéo en pause et ajoutez une remarque horodatée.
+            </p>
+          </div>
         )}
-        {sorted.map((c) => (
-          <article
-            key={c.id}
-            className={`comment ${c.id === activeId ? 'active' : ''}`}
-          >
-            <button
-              className="comment-time"
-              style={{ color: c.color }}
-              onClick={() => onSeek(c.time)}
-              title="Aller à ce moment"
+
+        <AnimatePresence initial={false}>
+          {sorted.map((c) => (
+            <motion.article
+              key={c.id}
+              layout
+              initial={{ opacity: 0, y: 8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
+              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+              className={`comment ${c.id === activeId ? 'active' : ''}`}
+              style={{ ['--c' as string]: c.color }}
             >
-              {formatTime(c.time)}
-            </button>
-            <div className="comment-body">
-              <div className="comment-meta">
-                <span className="dot" style={{ background: c.color }} />
-                <strong>{c.authorName ?? 'Invité'}</strong>
-              </div>
-              <p>{c.text}</p>
-            </div>
-            {self && c.authorId === self.id && (
               <button
-                className="comment-del"
-                title="Supprimer"
-                onClick={() => onDelete(c.id)}
+                className="comment-time"
+                onClick={() => onSeek(c.time)}
+                title="Aller à ce moment"
               >
-                ×
+                <Clock size={12} />
+                {formatTime(c.time)}
               </button>
-            )}
-          </article>
-        ))}
+              <div className="comment-body">
+                <div className="comment-meta">
+                  <span className="dot" style={{ background: c.color }} />
+                  <strong>{c.authorName ?? 'Invité'}</strong>
+                </div>
+                <p>{c.text}</p>
+              </div>
+              {self && c.authorId === self.id && (
+                <button
+                  className="comment-del"
+                  title="Supprimer"
+                  onClick={() => onDelete(c.id)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </motion.article>
+          ))}
+        </AnimatePresence>
       </div>
 
       <form className="comment-form" onSubmit={submit}>
-        <div className="comment-form-time">@ {formatTime(currentTime)}</div>
-        <textarea
-          value={draft}
-          placeholder="Ajouter un commentaire à cet instant…"
-          rows={2}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
-          }}
-        />
-        <button type="submit" disabled={!draft.trim()}>
-          Commenter
-        </button>
+        <div className="comment-form-time">
+          <Clock size={12} /> à {formatTime(currentTime)}
+        </div>
+        <div className="comment-input-row">
+          <textarea
+            value={draft}
+            placeholder="Commenter cet instant…  (⌘/Ctrl + ↵)"
+            rows={2}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
+            }}
+          />
+          <button type="submit" disabled={!draft.trim()} title="Envoyer">
+            <Send size={16} />
+          </button>
+        </div>
       </form>
     </aside>
   );

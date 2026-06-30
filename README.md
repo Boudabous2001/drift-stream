@@ -163,7 +163,14 @@ en local avec de simples tableaux.
 
 ## 🛠️ Stack
 
-**React 18 · TypeScript · Vite · Canvas API · WebSockets (`ws`) · Node.js**
+**Cœur imposé par le sujet :** **React 18 · WebSockets (`ws`) · Canvas API**
+(+ TypeScript · Vite · Node.js).
+
+**Polish UI/UX :** [`framer-motion`](https://www.framer.com/motion/) (animations &
+micro-interactions), [`lucide-react`](https://lucide.dev) (icônes),
+[`react-hot-toast`](https://react-hot-toast.com) (notifications), **Inter** (typographie).
+Ces bibliothèques ne touchent qu'à la présentation : le dessin reste en **Canvas
+API** pur et le temps réel en **WebSockets** natifs.
 
 ## 📄 Licence
 

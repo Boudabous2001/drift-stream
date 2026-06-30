@@ -1,4 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
+import {
+  Play,
+  Pause,
+  Rewind,
+  FastForward,
+  Volume2,
+  VolumeX,
+  Maximize,
+  Minimize,
+  Download,
+  PenLine,
+  X,
+} from 'lucide-react';
 import type {
   Annotation,
   Comment,
@@ -20,11 +35,8 @@ import { CommentsPanel } from './CommentsPanel';
 import { PresenceBar } from './PresenceBar';
 
 export interface ReviewPlayerProps {
-  /** Video source URL (mp4, webm…). */
   src: string;
-  /** Room / session identifier (used for export + collab). */
   room: string;
-  /** Collaboration data + actions (injected; the component itself is UI-only). */
   annotations: Annotation[];
   comments: Comment[];
   peers: Peer[];
@@ -45,10 +57,6 @@ export interface ReviewPlayerProps {
  * Self-contained review surface: an HTML5 video with a Canvas annotation
  * overlay, timestamped comments, live collaboration cursors, and a one-click
  * JSON export of the whole review (the brief's deliverable).
- *
- * It is intentionally presentational: all shared state arrives via props so the
- * same component can run standalone (local arrays) or wired to the WebSocket
- * collaboration layer.
  */
 export function ReviewPlayer(props: ReviewPlayerProps) {
   const {
@@ -79,6 +87,9 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [size, setSize] = useState({ w: 640, h: 360 });
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
 
   // --- video element wiring ----------------------------------------------
 
@@ -89,15 +100,21 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
     const onMeta = () => setDuration(v.duration || 0);
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
+    const onVol = () => {
+      setVolume(v.volume);
+      setMuted(v.muted);
+    };
     v.addEventListener('timeupdate', onTime);
     v.addEventListener('loadedmetadata', onMeta);
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPause);
+    v.addEventListener('volumechange', onVol);
     return () => {
       v.removeEventListener('timeupdate', onTime);
       v.removeEventListener('loadedmetadata', onMeta);
       v.removeEventListener('play', onPlay);
       v.removeEventListener('pause', onPause);
+      v.removeEventListener('volumechange', onVol);
     };
   }, []);
 
@@ -111,6 +128,12 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
     ro.observe(v);
     setSize({ w: v.clientWidth, h: v.clientHeight });
     return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const onFs = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
   }, []);
 
   const togglePlay = useCallback(() => {
@@ -127,7 +150,27 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
     setCurrentTime(v.currentTime);
   }, []);
 
-  // Keyboard shortcuts: space=play/pause, ←/→ frame-ish seek, tool hotkeys.
+  const toggleMute = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = !v.muted;
+  }, []);
+
+  const setVol = useCallback((value: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.volume = value;
+    v.muted = value === 0;
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen();
+    else el.requestFullscreen?.();
+  }, []);
+
+  // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -142,6 +185,12 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
           break;
         case 'ArrowRight':
           seek(currentTime + 5);
+          break;
+        case 'f':
+          toggleFullscreen();
+          break;
+        case 'm':
+          toggleMute();
           break;
         case 'v':
           setTool('select');
@@ -167,7 +216,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [togglePlay, seek, currentTime]);
+  }, [togglePlay, seek, currentTime, toggleFullscreen, toggleMute]);
 
   // --- derived data -------------------------------------------------------
 
@@ -186,7 +235,6 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   // --- actions ------------------------------------------------------------
 
   function handleCreate(a: Annotation) {
-    // Pause so the annotation pins to a stable frame, and auto-switch to select.
     videoRef.current?.pause();
     onCreateAnnotation(a);
   }
@@ -202,21 +250,26 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
       createdAt: Date.now(),
     };
     onAddComment(c);
+    toast.success('Commentaire ajouté');
+  }
+
+  function handleClear() {
+    if (annotations.length === 0) return;
+    onClearAnnotations();
+    toast('Annotations effacées', { icon: '🧹' });
   }
 
   function handleExport() {
-    const bundle = buildExport({
-      room,
-      src,
-      duration,
-      annotations,
-      comments,
-    });
+    const bundle = buildExport({ room, src, duration, annotations, comments });
     const safeRoom = room.replace(/[^a-z0-9-_]+/gi, '-');
     downloadJSON(bundle, `drift-stream_${safeRoom}_${Date.now()}.json`);
+    toast.success(
+      `Export JSON · ${annotations.length} annotation(s), ${comments.length} commentaire(s)`,
+    );
   }
 
   const annotationCount = annotations.length;
+  const VolIcon = muted || volume === 0 ? VolumeX : Volume2;
 
   return (
     <div className="review-player">
@@ -228,10 +281,10 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
           setColor={setColor}
           strokeWidth={strokeWidth}
           setStrokeWidth={setStrokeWidth}
-          onClear={onClearAnnotations}
+          onClear={handleClear}
         />
 
-        <div className="stage" ref={stageRef}>
+        <div className={`stage ${fullscreen ? 'is-fullscreen' : ''}`} ref={stageRef}>
           <video
             ref={videoRef}
             className="video"
@@ -252,8 +305,14 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
             onCursorMove={onCursorMove}
             promptText={() => window.prompt('Texte de l’annotation :')}
           />
+
           {visibleAnnotations.length > 0 && (
-            <div className="frame-badge">
+            <motion.div
+              className="frame-badge"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <PenLine size={13} />
               <span>
                 {visibleAnnotations.length} annotation
                 {visibleAnnotations.length > 1 ? 's' : ''} · ±{ANNOTATION_WINDOW}s
@@ -265,31 +324,79 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
                   visibleAnnotations.forEach((a) => onDeleteAnnotation(a.id))
                 }
               >
-                ×
+                <X size={13} />
               </button>
-            </div>
+            </motion.div>
+          )}
+
+          {!playing && (
+            <button className="big-play" onClick={togglePlay} aria-label="Lecture">
+              <Play size={30} fill="currentColor" />
+            </button>
           )}
         </div>
 
-        <Timeline
-          duration={duration}
-          currentTime={currentTime}
-          playing={playing}
-          annotations={annotations}
-          comments={comments}
-          onTogglePlay={togglePlay}
-          onSeek={seek}
-        />
+        <div className="timeline">
+          <button
+            className="play-btn"
+            onClick={togglePlay}
+            title={playing ? 'Pause (espace)' : 'Lecture (espace)'}
+          >
+            {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
+          </button>
+
+          <button className="ctrl-btn" onClick={() => seek(currentTime - 5)} title="-5s (←)">
+            <Rewind size={17} />
+          </button>
+          <button className="ctrl-btn" onClick={() => seek(currentTime + 5)} title="+5s (→)">
+            <FastForward size={17} />
+          </button>
+
+          <Track
+            duration={duration}
+            currentTime={currentTime}
+            annotations={annotations}
+            comments={comments}
+            onSeek={seek}
+          />
+
+          <div className="time-label">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </div>
+
+          <div className="volume">
+            <button className="ctrl-btn" onClick={toggleMute} title="Muet (M)">
+              <VolIcon size={17} />
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={muted ? 0 : volume}
+              onChange={(e) => setVol(Number(e.target.value))}
+            />
+          </div>
+
+          <button className="ctrl-btn" onClick={toggleFullscreen} title="Plein écran (F)">
+            {fullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
+          </button>
+        </div>
 
         <div className="actions-bar">
           <PresenceBar peers={peers} self={self} status={status} />
           <div className="actions-right">
             <span className="counter" title="Annotations dans la revue">
-              ✎ {annotationCount}
+              <PenLine size={14} /> {annotationCount}
             </span>
-            <button className="export-btn" onClick={handleExport}>
-              ⬇ Exporter JSON
-            </button>
+            <motion.button
+              className="export-btn"
+              onClick={handleExport}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <Download size={16} /> Exporter JSON
+            </motion.button>
           </div>
         </div>
       </div>
@@ -306,27 +413,17 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   );
 }
 
-// --- timeline / scrub bar with annotation + comment markers ---------------
+// --- scrub track with annotation + comment markers ------------------------
 
-interface TimelineProps {
+interface TrackProps {
   duration: number;
   currentTime: number;
-  playing: boolean;
   annotations: Annotation[];
   comments: Comment[];
-  onTogglePlay: () => void;
   onSeek: (t: number) => void;
 }
 
-function Timeline({
-  duration,
-  currentTime,
-  playing,
-  annotations,
-  comments,
-  onTogglePlay,
-  onSeek,
-}: TimelineProps) {
+function Track({ duration, currentTime, annotations, comments, onSeek }: TrackProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -339,55 +436,41 @@ function Timeline({
   }
 
   return (
-    <div className="timeline">
-      <button
-        className="play-btn"
-        onClick={onTogglePlay}
-        title={playing ? 'Pause (espace)' : 'Lecture (espace)'}
-      >
-        {playing ? '⏸' : '▶'}
-      </button>
+    <div
+      className="track"
+      ref={trackRef}
+      onPointerDown={(e) => seekFromEvent(e.clientX)}
+    >
+      <div className="track-fill" style={{ width: `${pct}%` }} />
+      <div className="track-head" style={{ left: `${pct}%` }} />
 
-      <div
-        className="track"
-        ref={trackRef}
-        onPointerDown={(e) => seekFromEvent(e.clientX)}
-      >
-        <div className="track-fill" style={{ width: `${pct}%` }} />
-        <div className="track-head" style={{ left: `${pct}%` }} />
+      {duration > 0 &&
+        annotations.map((a) => (
+          <span
+            key={a.id}
+            className="marker annotation"
+            style={{ left: `${(a.time / duration) * 100}%`, background: a.color }}
+            title={`Annotation @ ${formatTime(a.time)}`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onSeek(a.time);
+            }}
+          />
+        ))}
 
-        {duration > 0 &&
-          annotations.map((a) => (
-            <span
-              key={a.id}
-              className="marker annotation"
-              style={{ left: `${(a.time / duration) * 100}%`, background: a.color }}
-              title={`Annotation @ ${formatTime(a.time)}`}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                onSeek(a.time);
-              }}
-            />
-          ))}
-
-        {duration > 0 &&
-          comments.map((c) => (
-            <span
-              key={c.id}
-              className="marker comment"
-              style={{ left: `${(c.time / duration) * 100}%` }}
-              title={`💬 ${c.authorName ?? ''} @ ${formatTime(c.time)}`}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                onSeek(c.time);
-              }}
-            />
-          ))}
-      </div>
-
-      <div className="time-label">
-        {formatTime(currentTime)} / {formatTime(duration)}
-      </div>
+      {duration > 0 &&
+        comments.map((c) => (
+          <span
+            key={c.id}
+            className="marker comment"
+            style={{ left: `${(c.time / duration) * 100}%` }}
+            title={`${c.authorName ?? ''} @ ${formatTime(c.time)}`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onSeek(c.time);
+            }}
+          />
+        ))}
     </div>
   );
 }
