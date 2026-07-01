@@ -40,7 +40,17 @@ export interface CollabEvents {
 /** Resolve the collab server URL (dev proxy by default, overridable via env). */
 function resolveUrl(): string {
   const env = import.meta.env?.VITE_WS_URL as string | undefined;
-  if (env) return env;
+  if (env) {
+    // The server listens on the `/ws` path. Tolerate an env URL given without a
+    // path (e.g. `ws://localhost:8080`) by appending it automatically.
+    try {
+      const u = new URL(env);
+      if (u.pathname === '' || u.pathname === '/') u.pathname = '/ws';
+      return u.toString().replace(/\/$/, '');
+    } catch {
+      return /\/ws\/?$/.test(env) ? env : `${env.replace(/\/$/, '')}/ws`;
+    }
+  }
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   // Dev: Vite proxies `/ws` to the Node server (see vite.config.ts).
   return `${proto}://${location.host}/ws`;
