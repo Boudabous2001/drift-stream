@@ -1,0 +1,19 @@
+# Phantom Frame — React client (Pôle 1)
+# Referenced by the Streamix docker-compose.yml as `frontend`.
+# Build context = repo root.
+#
+# Runs the Vite dev server so the VITE_* variables passed by docker-compose at
+# runtime (WS URL, HLS base, key server, AI API) are picked up on start.
+FROM node:20-alpine
+
+WORKDIR /app/client
+
+COPY client/package*.json ./
+RUN npm install
+
+COPY client ./
+
+EXPOSE 5173
+
+# --host 0.0.0.0 makes the dev server reachable from outside the container.
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

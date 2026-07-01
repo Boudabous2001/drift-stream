@@ -66,7 +66,7 @@ export function buildExport(args: {
   comments: Comment[];
 }): ExportBundle {
   return {
-    schema: 'phontom-frame/review-export',
+    schema: 'phantom-frame/review-export',
     version: 1,
     exportedAt: new Date().toISOString(),
     room: args.room,

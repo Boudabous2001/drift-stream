@@ -115,7 +115,7 @@ function ReviewRoom({
             <LogoMark />
           </span>
           <div>
-            <h1>Phontom Frame</h1>
+            <h1>Phantom Frame</h1>
             <p>Lecteur de Revue Augmenté</p>
           </div>
         </div>
@@ -328,7 +328,7 @@ function JoinScreen({
           >
             <LogoMark />
           </motion.span>
-          <h1>Phontom Frame</h1>
+          <h1>Phantom Frame</h1>
           <p className="tagline">Lecteur de Revue Augmenté</p>
         </div>
 
