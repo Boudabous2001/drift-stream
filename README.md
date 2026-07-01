@@ -1,4 +1,4 @@
-# Phontom Frame — Lecteur de Revue Augmenté
+# Phantom Frame — Lecteur de Revue Augmenté
 
 > **Hackathon ESTIAM × 42C 2026** — Pôle 1 *Application & Collaboration* · **Sujet A**
 > Plateforme Vidéo B2B « V-Secure & Collaborate »
@@ -68,7 +68,7 @@ npm run build        # build de production du client
 ## 🧩 Architecture
 
 ```
-Phontom Frame/
+Phantom Frame/
 ├── client/                      # React + Vite + TypeScript
 │   └── src/
 │       ├── components/
@@ -122,7 +122,7 @@ revue (voir [`docs/sample-export.json`](docs/sample-export.json)) :
 
 ```json
 {
-  "schema": "phontom-frame/review-export",
+  "schema": "phantom-frame/review-export",
   "version": 1,
   "exportedAt": "2026-06-30T10:00:00.000Z",
   "room": "revue-demo",

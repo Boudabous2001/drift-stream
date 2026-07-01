@@ -38,6 +38,8 @@ import { Toolbar } from './Toolbar';
 import { CommentsPanel } from './CommentsPanel';
 import { PresenceBar } from './PresenceBar';
 import { MediaControls } from './MediaControls';
+import { AIMetadataPanel } from './AIMetadataPanel';
+import { useHLSPlayer, isHlsSource } from '../hooks/useHLSPlayer';
 
 export interface ReviewPlayerProps {
   room: string;
@@ -60,7 +62,7 @@ export interface ReviewPlayerProps {
 }
 
 /**
- * Phontom Frame — Lecteur de Revue Augmenté.
+ * Phantom Frame — Lecteur de Revue Augmenté.
  *
  * Review surface that renders the room's shared media — a video (with timeline)
  * or a blank whiteboard — with a Canvas annotation overlay, timestamped
@@ -107,6 +109,11 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   const isVideo = media?.kind === 'video';
   const isImage = media?.kind === 'image';
   const isWhiteboard = media?.kind === 'whiteboard';
+  const isHls = isVideo && isHlsSource(media?.src);
+
+  // Pôle 2 — attach hls.js on the video ref when the source is an encrypted
+  // HLS stream (no-op for plain MP4).
+  useHLSPlayer(videoRef, isVideo ? media?.src : null);
 
   // --- video element wiring (only relevant in video mode) ----------------
 
@@ -302,7 +309,7 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
   function handleExport() {
     const bundle = buildExport({ room, media, duration, annotations, comments });
     const safeRoom = room.replace(/[^a-z0-9-_]+/gi, '-');
-    downloadJSON(bundle, `phontom-frame_${safeRoom}_${Date.now()}.json`);
+    downloadJSON(bundle, `phantom-frame_${safeRoom}_${Date.now()}.json`);
     toast.success(
       `Export JSON · ${annotations.length} annotation(s), ${comments.length} commentaire(s)`,
     );
@@ -341,7 +348,13 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
           ref={stageRef}
         >
           {isVideo && (
-            <video ref={videoRef} className="video" src={media!.src} playsInline />
+            <video
+              ref={videoRef}
+              className="video"
+              /* For HLS, hls.js sets the source via attachMedia — not the src attr. */
+              src={isHls ? undefined : media!.src}
+              playsInline
+            />
           )}
 
           {isImage && (
@@ -497,15 +510,22 @@ export function ReviewPlayer(props: ReviewPlayerProps) {
         )}
       </div>
 
-      <CommentsPanel
-        comments={comments}
-        self={self}
-        currentTime={currentTime}
-        hasTimeline={isVideo}
-        onAdd={(text) => handleAddComment(text)}
-        onDelete={onDeleteComment}
-        onSeek={seek}
-      />
+      <div className="right-col">
+        <AIMetadataPanel
+          videoUrl={isVideo && !isHls ? media!.src ?? null : null}
+          onSeek={seek}
+          onChaptersReady={(anns) => anns.forEach((a) => onCreateAnnotation(a))}
+        />
+        <CommentsPanel
+          comments={comments}
+          self={self}
+          currentTime={currentTime}
+          hasTimeline={isVideo}
+          onAdd={(text) => handleAddComment(text)}
+          onDelete={onDeleteComment}
+          onSeek={seek}
+        />
+      </div>
     </div>
   );
 }

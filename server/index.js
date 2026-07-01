@@ -1,5 +1,5 @@
 /**
- * Phontom Frame — WebSocket collaboration server
+ * Phantom Frame — WebSocket collaboration server
  * Hackathon ESTIAM x 42C 2026 — Pôle 1 / Sujet A "Lecteur de Revue Augmenté"
  *
  * Responsibilities:
@@ -181,7 +181,7 @@ wss.on('error', (err) => {
   if (err?.code === 'EADDRINUSE') {
     // eslint-disable-next-line no-console
     console.error(
-      `Port ${PORT} deja utilise. Fermez l'ancien serveur Phontom Frame ou changez la variable PORT.`,
+      `Port ${PORT} deja utilise. Fermez l'ancien serveur Phantom Frame ou changez la variable PORT.`,
     );
     process.exit(1);
   }
@@ -208,7 +208,7 @@ wss.on('connection', (ws) => {
 
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`Phontom Frame server listening on http://localhost:${PORT}`);
+  console.log(`Phantom Frame server listening on http://localhost:${PORT}`);
 });
 
 function handleMessage(ws, msg) {

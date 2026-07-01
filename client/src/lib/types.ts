@@ -1,4 +1,4 @@
-/** Shared domain types for Phontom Frame. */
+/** Shared domain types for Phantom Frame. */
 
 export type ShapeTool = 'arrow' | 'rect' | 'ellipse' | 'freehand' | 'text';
 export type Tool = ShapeTool | 'select' | 'eraser';
@@ -78,7 +78,7 @@ export interface RemoteCursor {
 
 /** Shape of the exported deliverable (annotations + comments as JSON). */
 export interface ExportBundle {
-  schema: 'phontom-frame/review-export';
+  schema: 'phantom-frame/review-export';
   version: 1;
   exportedAt: string;
   room: string;
