@@ -34,46 +34,49 @@ export function useHLSPlayer(
 
     const hlsUrl = src.startsWith('http') ? src : `${HLS_BASE}${src}`;
 
-    // Safari plays HLS natively.
+    // Prefer hls.js when supported (Chrome/Firefox/Edge/Opera). Native HLS is
+    // only a fallback for Safari — many Chromium browsers wrongly report
+    // canPlayType('application/vnd.apple.mpegurl') as "maybe" yet cannot demux
+    // HLS, which would silently show a black frame. So hls.js goes first.
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        xhrSetup(xhr: XMLHttpRequest, url: string) {
+          // Inject the ephemeral-key token for the Key Server requests.
+          if ((url.includes(KEY_SERVER) || url.includes('/key')) && !url.includes('token=')) {
+            const sep = url.includes('?') ? '&' : '?';
+            xhr.open('GET', `${url}${sep}token=${HLS_TOKEN}`, true);
+          }
+        },
+        startLevel: -1,
+        enableWorker: true,
+      });
+
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.ERROR, (_e: unknown, data: any) => {
+        if (data.fatal) {
+          // eslint-disable-next-line no-console
+          console.error('[Streamix HLS] Erreur fatale :', data.type, data.details);
+          hls.destroy();
+        }
+      });
+
+      hlsRef.current = hls;
+      return () => {
+        hls.destroy();
+        hlsRef.current = null;
+      };
+    }
+
+    // Fallback: Safari's native HLS support.
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = hlsUrl;
       return;
     }
 
-    if (!Hls.isSupported()) {
-      // eslint-disable-next-line no-console
-      console.error('[Streamix] hls.js non supporté sur ce navigateur');
-      return;
-    }
-
-    const hls = new Hls({
-      xhrSetup(xhr: XMLHttpRequest, url: string) {
-        // Inject the ephemeral-key token for the Key Server requests.
-        if ((url.includes(KEY_SERVER) || url.includes('/key')) && !url.includes('token=')) {
-          const sep = url.includes('?') ? '&' : '?';
-          xhr.open('GET', `${url}${sep}token=${HLS_TOKEN}`, true);
-        }
-      },
-      startLevel: -1,
-      enableWorker: true,
-    });
-
-    hls.loadSource(hlsUrl);
-    hls.attachMedia(video);
-
-    hls.on(Hls.Events.ERROR, (_e: unknown, data: any) => {
-      if (data.fatal) {
-        // eslint-disable-next-line no-console
-        console.error('[Streamix HLS] Erreur fatale :', data.type, data.details);
-        hls.destroy();
-      }
-    });
-
-    hlsRef.current = hls;
-    return () => {
-      hls.destroy();
-      hlsRef.current = null;
-    };
+    // eslint-disable-next-line no-console
+    console.error('[Streamix] HLS non supporté sur ce navigateur');
   }, [videoRef, src]);
 
   return hlsRef;
